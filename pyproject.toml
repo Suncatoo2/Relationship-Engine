@@ -1,15 +1,12 @@
 [project]
 name = "relationship-engine"
-version = "0.1.0"
-description = "AI关系引擎 - 帮你管理所有关系，记住一切"
+version = "0.2.0"
+description = "AI 关系管理 MCP Server - 任何 AI 都能调用的关系记忆引擎"
 requires-python = ">=3.10"
 dependencies = [
-    "fastapi>=0.110",
-    "uvicorn>=0.27",
+    "mcp>=1.0",
     "pydantic>=2.0",
-    "openai>=1.0",
     "python-dotenv>=1.0",
-    "jinja2>=3.1",
 ]
 
 [project.scripts]
