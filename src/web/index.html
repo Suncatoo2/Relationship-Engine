@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>💘 Relationship Engine</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0f0f0f; --card: #1a1a2e; --accent: #e94560;
+  --accent2: #533483; --text: #eee; --muted: #888;
+  --green: #00d26a; --blue: #4fc3f7; --yellow: #ffd54f;
+}
+body { font-family: -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* 布局 */
+.app { display: grid; grid-template-columns: 280px 1fr; grid-template-rows: 60px 1fr; height: 100vh; }
+header { grid-column: 1/-1; background: var(--card); display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid #333; }
+header h1 { font-size: 20px; }
+header h1 span { color: var(--accent); }
+
+/* 侧边栏 */
+.sidebar { background: #16213e; overflow-y: auto; padding: 16px; border-right: 1px solid #333; }
+.sidebar h3 { color: var(--muted); font-size: 12px; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 1px; }
+.person-list { list-style: none; }
+.person-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center; }
+.person-item:hover { background: rgba(233,69,96,0.15); }
+.person-item.active { background: rgba(233,69,96,0.25); border-left: 3px solid var(--accent); }
+.person-item .name { font-weight: 500; }
+.person-item .stage { font-size: 11px; color: var(--muted); background: #2a2a4a; padding: 2px 8px; border-radius: 10px; }
+.add-btn { width: 100%; padding: 10px; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; margin-top: 12px; }
+.add-btn:hover { opacity: 0.85; }
+
+/* 主内容 */
+.main { display: grid; grid-template-rows: 1fr auto; overflow: hidden; }
+
+/* 聊天区 */
+.chat-area { overflow-y: auto; padding: 20px; }
+.msg { margin-bottom: 16px; display: flex; gap: 10px; }
+.msg.user { flex-direction: row-reverse; }
+.msg-bubble { max-width: 70%; padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+.msg.user .msg-bubble { background: var(--accent); border-bottom-right-radius: 4px; }
+.msg.ai .msg-bubble { background: #2a2a4a; border-bottom-left-radius: 4px; }
+.msg .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.msg.user .avatar { background: var(--accent2); }
+.msg.ai .avatar { background: #1a3a2e; }
+
+/* 输入区 */
+.input-area { padding: 16px 20px; background: var(--card); border-top: 1px solid #333; display: flex; gap: 10px; }
+.input-area input { flex: 1; padding: 12px 16px; background: #0f0f0f; border: 1px solid #333; border-radius: 12px; color: var(--text); font-size: 14px; outline: none; }
+.input-area input:focus { border-color: var(--accent); }
+.send-btn { padding: 12px 24px; background: var(--accent); color: white; border: none; border-radius: 12px; cursor: pointer; font-size: 14px; }
+.send-btn:hover { opacity: 0.85; }
+
+/* 详情面板 */
+.detail-panel { display: none; position: fixed; right: 0; top: 60px; width: 360px; height: calc(100vh - 60px); background: var(--card); border-left: 1px solid #333; overflow-y: auto; padding: 20px; z-index: 10; }
+.detail-panel.open { display: block; }
+.detail-panel h2 { margin-bottom: 16px; }
+.detail-panel .close-btn { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; }
+.info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #2a2a3e; }
+.info-row .label { color: var(--muted); font-size: 13px; }
+.info-row .value { font-size: 13px; }
+.chemistry-bar { width: 100%; height: 8px; background: #2a2a4a; border-radius: 4px; margin: 8px 0; overflow: hidden; }
+.chemistry-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.fact-item { padding: 8px; background: #0f0f2e; border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+.fact-item .cat { color: var(--accent); font-size: 11px; }
+.reminder-card { padding: 12px; background: rgba(233,69,96,0.1); border-left: 3px solid var(--accent); border-radius: 8px; margin-bottom: 8px; font-size: 13px; }
+.tag { display: inline-block; padding: 2px 8px; background: var(--accent2); border-radius: 10px; font-size: 11px; margin: 2px; }
+
+/* 模态框 */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--card); border-radius: 16px; padding: 24px; width: 400px; max-width: 90vw; }
+.modal h2 { margin-bottom: 16px; }
+.modal label { display: block; margin-bottom: 12px; }
+.modal label span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.modal input, .modal select, .modal textarea { width: 100%; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 8px; color: var(--text); font-size: 14px; }
+.modal .btn-row { display: flex; gap: 10px; margin-top: 16px; }
+.modal .btn-row button { flex: 1; padding: 10px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.btn-cancel { background: #333; color: var(--text); }
+.btn-confirm { background: var(--accent); color: white; }
+
+/* 欢迎 */
+.welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); }
+.welcome .icon { font-size: 64px; margin-bottom: 16px; }
+.welcome p { font-size: 16px; }
+
+/* 加载动画 */
+.typing { display: inline-block; }
+.typing span { display: inline-block; width: 6px; height: 6px; background: var(--muted); border-radius: 50%; margin: 0 2px; animation: bounce 1.4s infinite; }
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%,80%,100% { transform: translateY(0); } 40% { transform: translateY(-8px); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>💘 <span>Relationship</span> Engine</h1>
+  </header>
+
+  <aside class="sidebar">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3>🐠 我的鱼塘</h3>
+      <button onclick="showDashboard()" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:13px;">📊 总览</button>
+    </div>
+    <ul class="person-list" id="personList"></ul>
+    <button class="add-btn" onclick="showAddPerson()">+ 添加新朋友</button>
+    <div style="margin-top:20px;">
+      <h3>⏰ 提醒</h3>
+      <div id="reminders"></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="chat-area" id="chatArea">
+      <div class="welcome">
+        <div class="icon">💘</div>
+        <p>选择一个人开始对话，或添加新朋友</p>
+        <p style="margin-top:8px;font-size:13px;">AI 帮你记住一切，经营每一段关系</p>
+      </div>
+    </div>
+    <div class="input-area">
+      <input type="text" id="chatInput" placeholder="说点什么..." onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="send-btn" onclick="sendChat()">发送</button>
+    </div>
+  </main>
+</div>
+
+<!-- 详情面板 -->
+<div class="detail-panel" id="detailPanel">
+  <button class="close-btn" onclick="closeDetail()">✕</button>
+  <div id="detailContent"></div>
+</div>
+
+<!-- 添加人物模态框 -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <h2>➕ 添加新朋友</h2>
+    <label><span>名字 *</span><input id="newName" placeholder="Ta 叫什么？"></label>
+    <label><span>关系类型</span>
+      <select id="newType">
+        <option>朋友</option><option>暧昧</option><option>恋人</option>
+        <option>前任</option><option>同事</option><option>家人</option>
+      </select>
+    </label>
+    <label><span>生日</span><input id="newBirthday" type="date"></label>
+    <label><span>备注</span><textarea id="newNotes" rows="2" placeholder="关于 Ta 的备注..."></textarea></label>
+    <div class="btn-row">
+      <button class="btn-cancel" onclick="closeAddPerson()">取消</button>
+      <button class="btn-confirm" onclick="addPerson()">添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- 仪表盘模态框 -->
+<div class="modal-overlay" id="dashModal">
+  <div class="modal" style="width:500px;">
+    <h2>📊 鱼塘总览</h2>
+    <div id="dashContent"></div>
+    <div class="btn-row" style="margin-top:16px;">
+      <button class="btn-cancel" onclick="closeDashboard()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentPerson = '';
+let people = [];
+
+async function api(path, method='GET', body=null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+async function loadPeople() {
+  people = await api('/api/people');
+  const list = document.getElementById('personList');
+  list.innerHTML = people.map(p =>
+    `<li class="person-item ${p.name===currentPerson?'active':''}" onclick="selectPerson('${p.name}')">
+      <span class="name">${p.name}</span>
+      <span class="stage">${p.relationship_type}</span>
+    </li>`
+  ).join('');
+  loadReminders();
+}
+
+async function loadReminders() {
+  const reminders = await api('/api/reminders');
+  const el = document.getElementById('reminders');
+  if (!reminders.length) { el.innerHTML = '<p style="color:var(--muted);font-size:12px;">暂无提醒</p>'; return; }
+  el.innerHTML = reminders.map(r =>
+    `<div class="reminder-card">⚠️ ${r.message}</div>`
+  ).join('');
+}
+
+function selectPerson(name) {
+  currentPerson = name;
+  loadPeople();
+  loadChat();
+  loadDetail(name);
+}
+
+async function loadChat() {
+  if (!currentPerson) return;
+  const data = await api(`/api/people/${encodeURIComponent(currentPerson)}`);
+  const area = document.getElementById('chatArea');
+  const msgs = data.recent_messages || [];
+  if (!msgs.length) {
+    area.innerHTML = `<div class="welcome"><div class="icon">💬</div><p>开始和 ${currentPerson} 相关的对话吧</p></div>`;
+    return;
+  }
+  area.innerHTML = msgs.map(m =>
+    `<div class="msg ${m.role==='user'?'user':'ai'}">
+      <div class="avatar">${m.role==='user'?'👤':'💘'}</div>
+      <div class="msg-bubble">${m.content}</div>
+    </div>`
+  ).join('');
+  area.scrollTop = area.scrollHeight;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  const area = document.getElementById('chatArea');
+  if (area.querySelector('.welcome')) area.innerHTML = '';
+
+  area.innerHTML += `<div class="msg user"><div class="avatar">👤</div><div class="msg-bubble">${msg}</div></div>`;
+  area.innerHTML += `<div class="msg ai" id="typing"><div class="avatar">💘</div><div class="msg-bubble"><div class="typing"><span></span><span></span><span></span></div></div></div>`;
+  area.scrollTop = area.scrollHeight;
+
+  const data = await api('/api/chat', 'POST', { message: msg, person_name: currentPerson });
+  const typing = document.getElementById('typing');
+  if (typing) typing.remove();
+  area.innerHTML += `<div class="msg ai"><div class="avatar">💘</div><div class="msg-bubble">${data.reply}</div></div>`;
+  area.scrollTop = area.scrollHeight;
+  loadPeople();
+}
+
+async function loadDetail(name) {
+  const data = await api(`/api/people/${encodeURIComponent(name)}`);
+  const panel = document.getElementById('detailPanel');
+  const content = document.getElementById('detailContent');
+  const p = data.profile;
+  const r = data.relationship;
+
+  let html = `<h2>${p.name}</h2>`;
+  html += `<div class="info-row"><span class="label">关系</span><span class="value">${p.relationship_type}</span></div>`;
+  if (p.birthday) html += `<div class="info-row"><span class="label">生日</span><span class="value">${p.birthday}</span></div>`;
+  if (r) {
+    html += `<div class="info-row"><span class="label">阶段</span><span class="value">${r.stage}</span></div>`;
+    const color = r.chemistry > 70 ? 'var(--green)' : r.chemistry > 40 ? 'var(--yellow)' : 'var(--accent)';
+    html += `<div class="info-row"><span class="label">好感度</span><span class="value" style="color:${color}">${r.chemistry}%</span></div>`;
+    html += `<div class="chemistry-bar"><div class="chemistry-fill" style="width:${r.chemistry}%;background:${color}"></div></div>`;
+  }
+  if (p.tags.length) {
+    html += `<div style="margin:8px 0">${p.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>`;
+  }
+  if (p.facts.length) {
+    html += `<h3 style="margin:16px 0 8px;font-size:14px;">🧠 记忆</h3>`;
+    html += p.facts.map(f => `<div class="fact-item"><span class="cat">${f.category}</span> ${f.content}</div>`).join('');
+  }
+  if (r && r.events && r.events.length) {
+    html += `<h3 style="margin:16px 0 8px;font-size:14px;">📝 事件</h3>`;
+    html += r.events.slice(-5).map(e => `<div class="fact-item">${e.content} <span style="color:var(--muted);font-size:11px;">${e.date.slice(0,10)}</span></div>`).join('');
+  }
+  content.innerHTML = html;
+  panel.classList.add('open');
+}
+
+function closeDetail() { document.getElementById('detailPanel').classList.remove('open'); }
+
+function showAddPerson() { document.getElementById('addModal').classList.add('open'); }
+function closeAddPerson() { document.getElementById('addModal').classList.remove('open'); }
+
+async function addPerson() {
+  const name = document.getElementById('newName').value.trim();
+  if (!name) return alert('请输入名字');
+  await api('/api/people', 'POST', {
+    name,
+    relationship_type: document.getElementById('newType').value,
+    birthday: document.getElementById('newBirthday').value,
+    notes: document.getElementById('newNotes').value,
+  });
+  closeAddPerson();
+  document.getElementById('newName').value = '';
+  document.getElementById('newNotes').value = '';
+  currentPerson = name;
+  loadPeople();
+  selectPerson(name);
+}
+
+async function showDashboard() {
+  const data = await api('/api/dashboard');
+  const s = data.stats;
+  let html = `<p style="margin-bottom:12px;">共 <strong>${s.memory.total_people}</strong> 人，<strong>${s.memory.total_facts}</strong> 条记忆</p>`;
+  html += `<p style="margin-bottom:12px;">平均好感度: <strong>${s.relationships.avg_chemistry.toFixed(0)}%</strong></p>`;
+  if (data.relationships.length) {
+    html += `<h3 style="font-size:14px;margin:12px 0 8px;">好感度排行</h3>`;
+    html += data.relationships.sort((a,b)=>b.chemistry-a.chemistry).map(r =>
+      `<div class="info-row"><span class="value">${r.person_name} (${r.stage})</span><span class="value" style="color:var(--accent)">${r.chemistry}%</span></div>`
+    ).join('');
+  }
+  document.getElementById('dashContent').innerHTML = html;
+  document.getElementById('dashModal').classList.add('open');
+}
+function closeDashboard() { document.getElementById('dashModal').classList.remove('open'); }
+
+loadPeople();
+</script>
+</body>
+</html>
