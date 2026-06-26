@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relationship OS</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+:root {
+  --bg: #0d0d0d; --sidebar-bg: #111; --card: #1a1a1a;
+  --border: #2a2a2a; --text: #e0e0e0; --muted: #666;
+  --accent: #e94560; --user-bg: #2a1a2e; --ai-bg: #1a1a2e;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
+
+/* 侧边栏 */
+.sidebar { width: 280px; background: var(--sidebar-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+.sidebar-header h1 { font-size: 16px; font-weight: 600; }
+.new-chat-btn { background: var(--accent); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.new-chat-btn:hover { opacity: 0.85; }
+.conv-list { flex: 1; overflow-y: auto; padding: 8px; }
+.conv-item { padding: 12px 14px; border-radius: 8px; cursor: pointer; margin-bottom: 2px; }
+.conv-item:hover { background: var(--card); }
+.conv-item.active { background: var(--card); border-left: 3px solid var(--accent); }
+.conv-item .title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv-item .meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+
+/* 主聊天区 */
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.chat-header { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--sidebar-bg); }
+.chat-header h2 { font-size: 15px; font-weight: 500; }
+
+/* 消息区 */
+.messages { flex: 1; overflow-y: auto; padding: 0; }
+.msg-wrapper { padding: 20px 0; }
+.msg-wrapper:nth-child(even) { background: rgba(255,255,255,0.01); }
+.msg-inner { max-width: 760px; margin: 0 auto; padding: 0 24px; display: flex; gap: 16px; }
+.msg-inner.user { flex-direction: row-reverse; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.msg-inner.user .avatar { background: var(--accent); }
+.msg-inner.ai .avatar { background: #2a3a2e; }
+.msg-content { flex: 1; min-width: 0; }
+.msg-content .role { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+.msg-body { font-size: 15px; line-height: 1.7; }
+.msg-body p { margin-bottom: 12px; }
+.msg-body p:last-child { margin-bottom: 0; }
+.msg-body code { background: #2a2a3e; padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; }
+.msg-body pre { background: #0a0a1a; border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 12px 0; overflow-x: auto; }
+.msg-body pre code { background: none; padding: 0; font-size: 13px; }
+.msg-body ul, .msg-body ol { margin: 8px 0; padding-left: 24px; }
+.msg-body li { margin-bottom: 4px; }
+.msg-body blockquote { border-left: 3px solid var(--accent); padding-left: 12px; margin: 12px 0; color: var(--muted); }
+.msg-body strong { color: #fff; }
+.msg-body a { color: var(--accent); }
+.typing-indicator span { display: inline-block; width: 6px; height: 6px; background: var(--muted); border-radius: 50%; margin: 0 3px; animation: bounce 1.4s infinite; }
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%,80%,100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+
+/* 输入区 */
+.input-area { padding: 16px 24px 24px; background: var(--bg); }
+.input-box { max-width: 760px; margin: 0 auto; position: relative; }
+.input-box textarea { width: 100%; padding: 14px 50px 14px 18px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; color: var(--text); font-size: 15px; font-family: inherit; resize: none; outline: none; line-height: 1.5; min-height: 52px; max-height: 200px; }
+.input-box textarea:focus { border-color: var(--accent); }
+.send-btn { position: absolute; right: 10px; bottom: 10px; width: 36px; height: 36px; background: var(--accent); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+.send-btn:hover { opacity: 0.85; }
+.send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.input-hint { text-align: center; font-size: 11px; color: var(--muted); margin-top: 8px; }
+
+/* 欢迎页 */
+.welcome-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); }
+.welcome-screen .logo { font-size: 48px; margin-bottom: 16px; }
+.welcome-screen h2 { font-size: 22px; color: var(--text); margin-bottom: 8px; }
+.welcome-screen p { font-size: 14px; max-width: 400px; text-align: center; line-height: 1.6; }
+.welcome-screen .features { display: flex; gap: 16px; margin-top: 24px; flex-wrap: wrap; justify-content: center; }
+.welcome-screen .feature { background: var(--card); padding: 16px; border-radius: 12px; width: 160px; text-align: center; }
+.welcome-screen .feature .icon { font-size: 24px; margin-bottom: 8px; }
+.welcome-screen .feature .label { font-size: 13px; }
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1>Relationship OS</h1>
+    <button class="new-chat-btn" onclick="newConversation()">+ 新对话</button>
+  </div>
+  <div class="conv-list" id="convList"></div>
+  <div class="sidebar-footer" id="sidebarFooter">加载中...</div>
+</aside>
+
+<main class="main">
+  <div class="chat-header">
+    <h2 id="chatTitle">Relationship OS</h2>
+    <div style="font-size:12px;color:var(--muted)" id="chatMeta"></div>
+  </div>
+  <div class="messages" id="messages">
+    <div class="welcome-screen" id="welcomeScreen">
+      <div class="logo">💘</div>
+      <h2>Relationship OS</h2>
+      <p>能够和人一起经历时间的 AI。记住每个人、每段关系、每个重要时刻。</p>
+      <div class="features">
+        <div class="feature"><div class="icon">🧠</div><div class="label">长期记忆</div></div>
+        <div class="feature"><div class="icon">❤️</div><div class="label">关系追踪</div></div>
+        <div class="feature"><div class="icon">📅</div><div class="label">时间感知</div></div>
+        <div class="feature"><div class="icon">😊</div><div class="label">情绪理解</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="input-area">
+    <div class="input-box">
+      <textarea id="chatInput" placeholder="说点什么..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()">↑</button>
+    </div>
+    <div class="input-hint">Enter 发送 · Shift+Enter 换行</div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>
+// ---- 状态 ----
+let currentConversation = '';
+let isStreaming = false;
+
+// ---- Markdown 配置 ----
+marked.setOptions({
+  highlight: function(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  },
+  breaks: true,
+});
+
+// ---- 初始化 ----
+async function init() {
+  await loadConversations();
+  autoResizeTextarea();
+}
+
+// ---- 会话管理 ----
+async function loadConversations() {
+  const res = await fetch('/api/conversations');
+  const convs = await res.json();
+  const list = document.getElementById('convList');
+
+  if (!convs.length) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">还没有对话<br>点击上方按钮开始</div>';
+    document.getElementById('sidebarFooter').textContent = '0 个对话';
+    return;
+  }
+
+  list.innerHTML = convs.map(c =>
+    `<div class="conv-item ${c.id===currentConversation?'active':''}" onclick="selectConversation('${c.id}')">
+      <div class="title">${escapeHtml(c.title || '新对话')}</div>
+      <div class="meta">${c.message_count} 条消息 · ${formatTime(c.updated_at)}</div>
+    </div>`
+  ).join('');
+  document.getElementById('sidebarFooter').textContent = `${convs.length} 个对话`;
+}
+
+async function newConversation() {
+  const res = await fetch('/api/conversations', { method: 'POST' });
+  const data = await res.json();
+  currentConversation = data.id;
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('chatTitle').textContent = '新对话';
+  document.getElementById('chatMeta').textContent = '';
+  document.getElementById('welcomeScreen').style.display = 'none';
+  await loadConversations();
+  document.getElementById('chatInput').focus();
+}
+
+async function selectConversation(id) {
+  currentConversation = id;
+  document.getElementById('welcomeScreen').style.display = 'none';
+  await loadMessages(id);
+  await loadConversations();
+}
+
+async function loadMessages(convId) {
+  const res = await fetch(`/api/conversations/${convId}/messages`);
+  const messages = await res.json();
+  const area = document.getElementById('messages');
+
+  if (!messages.length) {
+    area.innerHTML = '';
+    return;
+  }
+
+  area.innerHTML = messages.map(m =>
+    `<div class="msg-wrapper"><div class="msg-inner ${m.role==='user'?'user':'ai'}">
+      <div class="avatar">${m.role==='user'?'👤':'💘'}</div>
+      <div class="msg-content">
+        <div class="role">${m.role==='user'?'你':'Relationship OS'}</div>
+        <div class="msg-body">${m.role==='user' ? escapeHtml(m.content) : marked.parse(m.content)}</div>
+      </div>
+    </div></div>`
+  ).join('');
+  area.scrollTop = area.scrollHeight;
+  document.getElementById('chatTitle').textContent = messages[0]?.content?.slice(0, 30) || '对话';
+  document.getElementById('chatMeta').textContent = `${messages.length} 条消息`;
+}
+
+// ---- 发送消息 ----
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg || isStreaming) return;
+
+  if (!currentConversation) {
+    await newConversation();
+  }
+
+  input.value = '';
+  input.style.height = '52px';
+
+  const area = document.getElementById('messages');
+
+  // 渲染用户消息
+  area.innerHTML += `<div class="msg-wrapper"><div class="msg-inner user">
+    <div class="avatar">👤</div>
+    <div class="msg-content">
+      <div class="role">你</div>
+      <div class="msg-body">${escapeHtml(msg)}</div>
+    </div>
+  </div></div>`;
+
+  // AI 占位
+  area.innerHTML += `<div class="msg-wrapper" id="aiMsg"><div class="msg-inner ai">
+    <div class="avatar">💘</div>
+    <div class="msg-content">
+      <div class="role">Relationship OS</div>
+      <div class="msg-body" id="aiBody"><div class="typing-indicator"><span></span><span></span><span></span></div></div>
+    </div>
+  </div></div>`;
+  area.scrollTop = area.scrollHeight;
+
+  isStreaming = true;
+  document.getElementById('sendBtn').disabled = true;
+
+  // SSE 流式请求
+  let fullReply = '';
+  try {
+    const response = await fetch('/api/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, conversation_id: currentConversation, person_name: currentConversation }),
+    });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const data = JSON.parse(line.slice(6));
+          if (data.type === 'chunk') {
+            fullReply += data.content;
+            document.getElementById('aiBody').innerHTML = marked.parse(fullReply);
+            area.scrollTop = area.scrollHeight;
+          }
+        } catch (e) {}
+      }
+    }
+  } catch (e) {
+    document.getElementById('aiBody').innerHTML = `<span style="color:var(--accent)">连接错误: ${e.message}</span>`;
+  }
+
+  isStreaming = false;
+  document.getElementById('sendBtn').disabled = false;
+  await loadConversations();
+}
+
+// ---- 事件处理 ----
+function handleKeyDown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResizeTextarea() {
+  const textarea = document.getElementById('chatInput');
+  textarea.addEventListener('input', () => {
+    textarea.style.height = '52px';
+    textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+  });
+}
+
+// ---- 工具函数 ----
+function escapeHtml(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    const now = new Date();
+    const diff = now - d;
+    if (diff < 60000) return '刚刚';
+    if (diff < 3600000) return Math.floor(diff/60000) + '分钟前';
+    if (diff < 86400000) return Math.floor(diff/3600000) + '小时前';
+    return d.toLocaleDateString('zh-CN');
+  } catch { return ''; }
+}
+
+init();
+</script>
+</body>
+</html>

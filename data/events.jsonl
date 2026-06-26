@@ -1,0 +1,5 @@
+{"id": "a9b0091b-9f02-4725-9e53-5fe2b6cc5431", "timestamp": "2026-06-26T08:39:49.279711+00:00", "type": "person", "data": {"action": "create", "birthday": "", "nickname": "", "tags": ["同学"], "notes": ""}, "person": "小雨", "source": "user_input"}
+{"id": "3054296c-2ba9-4002-a025-3d6309681093", "timestamp": "2026-06-26T08:39:51.322642+00:00", "type": "chat", "data": {"role": "user", "content": "你好呀"}, "person": "小雨", "source": "user_input"}
+{"id": "baed3bae-631d-4fbd-aa3a-bec992b37804", "timestamp": "2026-06-26T08:39:51.323277+00:00", "type": "chat", "data": {"role": "assistant", "content": "[离线模式] 收到你的消息：你好呀\n\n配置 OPENAI_API_KEY 或 CC_SWITCH_API_KEY 后可接入真实 AI。"}, "person": "小雨", "source": "user_input"}
+{"id": "147c6748-fc69-4743-aaf7-751b5414fa5b", "timestamp": "2026-06-26T08:42:59.879962+00:00", "type": "chat", "data": {"role": "user", "content": "你好，我叫小旭"}, "person": "小雨", "source": "user_input"}
+{"id": "24df4ab3-e9fe-4de5-87ea-907ba06365ed", "timestamp": "2026-06-26T08:42:59.880598+00:00", "type": "chat", "data": {"role": "assistant", "content": "[离线模式] 收到你的消息：你好，我叫小旭\n\n配置 OPENAI_API_KEY 或 CC_SWITCH_API_KEY 后可接入真实 AI。"}, "person": "小雨", "source": "user_input"}
