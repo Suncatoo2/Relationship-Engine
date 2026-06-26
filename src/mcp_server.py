@@ -1,64 +1,57 @@
-"""Relationship Engine - MCP Server
+"""Relationship Event OS — MCP Server
 
 让任何 AI（DeepSeek、Qwen、GPT、Claude）通过 MCP 协议
-调用关系管理能力。不绑定任何 LLM，只提供 Tools 和 Resources。
+调用关系管理能力。
+
+Everything is Event. Everything else is Projection.
 """
 
 import os
-import json
-from contextlib import asynccontextmanager
 from mcp.server.fastmcp import FastMCP
-from .memory import MemoryStore
-from .relationship import RelationshipTracker
-from .conversation import ConversationStore
+from .event_types import create_event, EventType
+from .event_log import EventLog
+from .projections.context import ContextComposer
+from .projections.prompt_builder import get_builder
 
 
-# ---- Lifespan: 初始化数据存储 ----
+# ---- 全局实例 ----
 
-@asynccontextmanager
-async def lifespan(server):
-    data_dir = os.getenv("DATA_DIR", "data")
-    yield {
-        "memory": MemoryStore(data_dir),
-        "tracker": RelationshipTracker(data_dir),
-        "conversation": ConversationStore(data_dir),
-    }
+_data_dir = os.getenv("DATA_DIR", "data")
+_event_log = EventLog(_data_dir)
+_composer = ContextComposer()
 
-
-mcp = FastMCP("RelationshipEngine", lifespan=lifespan)
+mcp = FastMCP("RelationshipEventOS")
 
 
 # ============================================================
-#  Tools — 任何 AI 都可以调用的 7 个工具
+#  Write Tools — 写入事件
 # ============================================================
 
 @mcp.tool()
 async def add_person(
     name: str,
-    relationship_type: str = "朋友",
-    nickname: str = "",
     birthday: str = "",
+    nickname: str = "",
+    tags: list[str] | None = None,
     notes: str = "",
 ) -> str:
-    """添加一个新人物到关系库。
+    """添加一个新人物到系统。
 
     Args:
         name: 姓名（必填）
-        relationship_type: 关系类型（朋友/暧昧/恋人/前任/同事/家人）
+        birthday: 生日（YYYY-MM-DD）
         nickname: 昵称
-        birthday: 生日（格式 YYYY-MM-DD）
+        tags: 标签列表（如 ["口腔同学", "室友"]）
         notes: 备注
     """
-    from mcp.server.fastmcp import Context
-    import inspect
-    ctx = inspect.currentframe().f_locals.get("ctx")
-
-    store = _get_memory()
-    tracker = _get_tracker()
-    store.add_person(name, relationship_type=relationship_type,
-                     nickname=nickname, birthday=birthday, notes=notes)
-    tracker.add_relationship(name)
-    return f"✅ 已添加: {name}（{relationship_type}）"
+    event = create_event(
+        type=EventType.PERSON,
+        person=name,
+        data={"action": "create", "birthday": birthday, "nickname": nickname,
+              "tags": tags or [], "notes": notes},
+    )
+    _event_log.append(event)
+    return f"已添加人物: {name}"
 
 
 @mcp.tool()
@@ -72,260 +65,273 @@ async def remember(
 
     Args:
         person_name: 人名
-        content: 要记住的内容（喜好、习惯、故事等）
-        category: 分类（general/preference/birthday/hobby/story/important）
-        importance: 重要性 1-10（越高越重要）
+        content: 要记住的内容
+        category: 分类（general/preference/birthday/hobby/story/important/secret）
+        importance: 重要性 1-10
     """
-    store = _get_memory()
-    if not store.get_person(person_name):
-        store.add_person(person_name)
-        _get_tracker().add_relationship(person_name)
-    fact = store.remember(person_name, content, category=category, importance=importance)
-    return f"✅ 已记住关于 {person_name} 的信息: {content}"
+    event = create_event(
+        type=EventType.FACT,
+        person=person_name,
+        data={"content": content, "category": category, "importance": importance},
+    )
+    _event_log.append(event)
+    return f"已记住关于 {person_name} 的信息: {content}"
 
 
 @mcp.tool()
-async def add_chat_message(
+async def add_chat(
     person_name: str,
     role: str,
     content: str,
+    topics: list[str] | None = None,
 ) -> str:
-    """记录一条聊天消息到对话历史。
+    """记录一条聊天消息。
 
     Args:
-        person_name: 对话对象的名字
+        person_name: 对话对象
         role: 角色（user=用户说的, assistant=AI回复的）
         content: 消息内容
+        topics: 话题标签（如 ["Python", "编程"]），用于话题统计
     """
-    conv = _get_conversation()
-    conv.start_session(person_name)
-    conv.add_message(person_name, role, content)
-    _get_tracker().touch(person_name)
-    return f"✅ 已记录与 {person_name} 的对话消息"
+    data = {"role": role, "content": content}
+    if topics:
+        data["topics"] = topics
+    event = create_event(
+        type=EventType.CHAT,
+        person=person_name,
+        data=data,
+    )
+    _event_log.append(event)
+    return f"已记录与 {person_name} 的对话"
 
 
 @mcp.tool()
-async def update_relationship(
+async def add_emotion(
+    person_name: str,
+    valence: float,
+    label: str,
+    arousal: float = 0.5,
+    context: str = "",
+) -> str:
+    """记录一条情绪数据。
+
+    Args:
+        person_name: 人名
+        valence: 情绪值 -1.0（负面）到 +1.0（正面）
+        label: 情绪标签（开心/难过/焦虑/平静/兴奋/愤怒/压力）
+        arousal: 唤醒度 0（平静）到 1（激动）
+        context: 触发场景
+    """
+    event = create_event(
+        type=EventType.EMOTION,
+        person=person_name,
+        data={"valence": valence, "arousal": arousal, "label": label, "context": context},
+    )
+    _event_log.append(event)
+    return f"已记录 {person_name} 的情绪: {label}"
+
+
+@mcp.tool()
+async def update_relation(
     person_name: str,
     stage: str = "",
     chemistry_delta: int = 0,
-    event: str = "",
-    event_type: str = "general",
+    event_desc: str = "",
 ) -> str:
     """更新与某人的关系状态。
 
     Args:
         person_name: 人名
-        stage: 新关系阶段（认识/朋友/暧昧/热恋/稳定/冷淡/分手）
+        stage: 新关系阶段（陌生人/认识/聊天/熟悉/朋友/重要的人/长期陪伴/暧昧/热恋/稳定/冷淡/分手）
         chemistry_delta: 好感度变化（正数升温，负数降温）
-        event: 发生的事件描述
-        event_type: 事件类型（general/date/gift/argument/milestone/sweet）
+        event_desc: 触发事件描述
     """
-    tracker = _get_tracker()
-    results = []
+    data = {}
     if stage:
-        rel = tracker.update_stage(person_name, stage)
-        if rel:
-            results.append(f"关系阶段更新为: {stage}")
+        data["stage"] = stage
     if chemistry_delta:
-        rel = tracker.update_chemistry(person_name, chemistry_delta)
-        if rel:
-            results.append(f"好感度变化: {chemistry_delta:+d} → {rel.chemistry}")
-    if event:
-        evt = tracker.add_event(person_name, event, event_type=event_type,
-                                emotional_impact=chemistry_delta)
-        if evt:
-            results.append(f"已记录事件: {event}")
-    if not results:
-        return f"⚠️ 未找到 {person_name}，请先用 add_person 添加"
-    return f"✅ {person_name}: " + "；".join(results)
+        data["delta"] = chemistry_delta
+    if event_desc:
+        data["event"] = event_desc
+    event = create_event(
+        type=EventType.RELATION,
+        person=person_name,
+        data=data,
+    )
+    _event_log.append(event)
+    return f"已更新 {person_name} 的关系"
 
 
 @mcp.tool()
-async def query_person(name: str) -> str:
-    """查询某人的完整信息（画像 + 关系 + 记忆 + 近期对话）。
+async def add_milestone(
+    person_name: str,
+    milestone_type: str,
+    description: str,
+    significance: int = 8,
+) -> str:
+    """记录一个关系里程碑。
+
+    Args:
+        person_name: 人名
+        milestone_type: 里程碑类型（first_meet/first_chat/first_deep_talk/first_secret/first_fight/first_reconciliation/first_date/first_trip/first_collaboration/custom）
+        description: 描述
+        significance: 重要性 1-10
+    """
+    event = create_event(
+        type=EventType.MILESTONE,
+        person=person_name,
+        data={"milestone_type": milestone_type, "description": description, "significance": significance},
+    )
+    _event_log.append(event)
+    return f"已记录里程碑: {description}"
+
+
+@mcp.tool()
+async def add_growth(
+    person_name: str,
+    title: str,
+    category: str,
+    description: str = "",
+    impact_level: int = 5,
+    date: str = "",
+) -> str:
+    """记录一个成长节点。记录的是变化，不是简历。
+
+    Args:
+        person_name: 人名（通常是"我自己"）
+        title: 标题（如"从遇到Bug就放弃到主动查文档"）
+        category: 类型（skill/experience/milestone/achievement/realization）
+        description: 描述
+        impact_level: 影响程度 1-10
+        date: 日期（YYYY-MM 或 YYYY-MM-DD）
+    """
+    event = create_event(
+        type=EventType.GROWTH,
+        person=person_name,
+        data={"title": title, "category": category, "description": description,
+              "impact_level": impact_level, "date": date},
+    )
+    _event_log.append(event)
+    return f"已记录成长: {title}"
+
+
+# ============================================================
+#  Read Tools — 读取视图
+# ============================================================
+
+@mcp.tool()
+async def get_context(
+    person_name: str,
+    max_tokens: int = 6000,
+    prompt_style: str = "default",
+) -> str:
+    """获取某人的完整 AI 上下文（最核心的读取接口）。
+
+    综合所有 Projection，返回关于这个人 AI 最应该知道的一切。
+
+    Args:
+        person_name: 人名
+        max_tokens: token 预算上限
+        prompt_style: 输出格式（default/gpt/claude/deepseek）
+    """
+    composer = ContextComposer(budget_limit=max_tokens)
+    snapshot = composer.compose(_event_log, person_name)
+
+    builder = get_builder(prompt_style)
+    return builder.build(snapshot)
+
+
+@mcp.tool()
+async def get_person(name: str) -> str:
+    """获取某人的人物画像。
 
     Args:
         name: 人名
     """
-    store = _get_memory()
-    tracker = _get_tracker()
-    conv = _get_conversation()
-
-    profile = store.get_person(name)
+    from .projections.person import PersonProjection
+    proj = PersonProjection()
+    profile = proj.project_one(list(_event_log.iter_events()), name)
     if not profile:
-        return f"⚠️ 未找到 {name} 的记录"
+        return f"未找到 {name}"
+    import json
+    return json.dumps(profile.to_dict(), ensure_ascii=False, indent=2)
 
-    rel = tracker.get(name)
-    facts = store.recall(name)
-    recent = conv.get_recent(name, 10)
 
-    lines = [f"👤 **{name}**"]
-    if profile.nickname:
-        lines[0] += f"（{profile.nickname}）"
-    lines.append(f"关系类型: {profile.relationship_type}")
-    if profile.birthday:
-        lines.append(f"生日: {profile.birthday}")
-    if profile.notes:
-        lines.append(f"备注: {profile.notes}")
+@mcp.tool()
+async def get_events(
+    person_name: str = "",
+    days: int = 30,
+    event_type: str = "",
+) -> str:
+    """获取原始事件流。
 
-    if rel:
-        lines.append(f"\n📊 **关系状态**")
-        lines.append(f"阶段: {rel.stage} | 好感度: {rel.chemistry}%")
-        lines.append(f"上次联系: {rel.last_contact[:10]}")
-        if rel.milestones:
-            lines.append(f"里程碑: {'; '.join(rel.milestones[-3:])}")
-
-    if facts:
-        lines.append(f"\n🧠 **记忆**（{len(facts)} 条）")
-        for f in facts[:10]:
-            lines.append(f"  [{f.category}] {f.content}")
-
-    if recent:
-        lines.append(f"\n💬 **近期对话**（{len(recent)} 条）")
-        for msg in recent[-5:]:
-            role = "用户" if msg.role == "user" else "AI"
-            lines.append(f"  [{role}] {msg.content[:100]}")
-
-    return "\n".join(lines)
+    Args:
+        person_name: 人名（可选，为空则返回所有）
+        days: 最近多少天
+        event_type: 事件类型过滤（可选）
+    """
+    import json
+    events = list(_event_log.iter_events())
+    if person_name:
+        events = [e for e in events if e.person == person_name]
+    if event_type:
+        events = [e for e in events if e.type == event_type]
+    events = events[-100:]  # 最多返回100条
+    return json.dumps([e.to_dict() for e in events], ensure_ascii=False, indent=2)
 
 
 @mcp.tool()
 async def get_reminders() -> str:
-    """获取所有提醒：太久没联系的人、即将到来的生日等。"""
-    tracker = _get_tracker()
-    store = _get_memory()
-
-    reminders = tracker.get_reminders()
-
-    # 生日提醒
-    from datetime import datetime
-    now = datetime.now()
-    for profile in store.list_people():
-        if profile.birthday:
-            try:
-                bd = datetime.strptime(profile.birthday, "%Y-%m-%d")
-                days_until = (bd.replace(year=now.year) - now).days
-                if days_until < 0:
-                    days_until = (bd.replace(year=now.year + 1) - now).days
-                if 0 <= days_until <= 7:
-                    reminders.append({
-                        "person": profile.name,
-                        "type": "birthday",
-                        "message": f"🎂 {profile.name} 的生日还有 {days_until} 天！准备一下吧",
-                        "urgency": "high" if days_until <= 3 else "medium",
-                    })
-            except ValueError:
-                pass
-
-    if not reminders:
-        return "✅ 一切正常，暂无提醒"
-
-    lines = ["⏰ **提醒事项**\n"]
-    for r in sorted(reminders, key=lambda x: 0 if x.get("urgency") == "high" else 1):
-        icon = "🔴" if r.get("urgency") == "high" else "🟡"
-        lines.append(f"{icon} {r['message']}")
-    return "\n".join(lines)
+    """获取所有提醒。"""
+    from .projections.reminder import ReminderProjection
+    proj = ReminderProjection()
+    profile = proj.project(list(_event_log.iter_events()))
+    import json
+    return json.dumps(profile.to_dict(), ensure_ascii=False, indent=2)
 
 
 @mcp.tool()
-async def search_memory(keyword: str) -> str:
-    """在所有人物记忆中搜索关键词。
+async def search(keyword: str) -> str:
+    """在所有事件中搜索关键词。
 
     Args:
         keyword: 搜索关键词
     """
-    store = _get_memory()
-    results = store.search(keyword)
-    if not results:
-        return f"未找到包含「{keyword}」的记忆"
-
-    lines = [f"🔍 搜索「{keyword}」找到 {len(results)} 条结果:\n"]
-    for person_name, fact in results:
-        lines.append(f"  👤 {person_name} [{fact.category}] {fact.content}")
-    return "\n".join(lines)
+    results = _event_log.search(keyword)
+    import json
+    return json.dumps([e.to_dict() for e in results[:20]], ensure_ascii=False, indent=2)
 
 
 # ============================================================
-#  Resources — AI 可读取的数据端点
+#  Resources
 # ============================================================
 
 @mcp.resource("relationship://people")
 def list_people() -> str:
     """获取所有人物列表"""
-    store = _get_memory()
-    tracker = _get_tracker()
-    people = store.list_people()
-    if not people:
-        return json.dumps({"people": [], "total": 0}, ensure_ascii=False)
-
-    result = []
-    for p in people:
-        rel = tracker.get(p.name)
-        result.append({
-            "name": p.name,
-            "nickname": p.nickname,
-            "relationship_type": p.relationship_type,
-            "birthday": p.birthday,
-            "stage": rel.stage if rel else "未知",
-            "chemistry": rel.chemistry if rel else 0,
-            "facts_count": len(p.facts),
-            "last_contact": rel.last_contact[:10] if rel else "",
-        })
-    return json.dumps({"people": result, "total": len(result)},
-                      ensure_ascii=False, indent=2)
+    from .projections.person import PersonProjection
+    proj = PersonProjection()
+    profiles = proj.project(list(_event_log.iter_events()))
+    import json
+    return json.dumps(
+        {name: p.to_dict() for name, p in profiles.items()},
+        ensure_ascii=False, indent=2,
+    )
 
 
 @mcp.resource("relationship://stats")
 def get_stats() -> str:
-    """获取关系统计摘要"""
-    store = _get_memory()
-    tracker = _get_tracker()
-    conv = _get_conversation()
+    """获取系统统计摘要"""
+    import json
+    events = list(_event_log.iter_events())
+    type_counts: dict[str, int] = {}
+    persons: set[str] = set()
+    for e in events:
+        type_counts[e.type] = type_counts.get(e.type, 0) + 1
+        if e.person:
+            persons.add(e.person)
     return json.dumps({
-        "memory": store.stats(),
-        "relationships": tracker.stats(),
+        "total_events": len(events),
+        "total_persons": len(persons),
+        "by_type": type_counts,
     }, ensure_ascii=False, indent=2)
-
-
-# ============================================================
-#  内部辅助
-# ============================================================
-
-def _get_memory() -> MemoryStore:
-    from mcp.server.fastmcp import Context
-    import inspect
-    # 从 lifespan context 获取，如果不在 MCP 环境则创建默认实例
-    try:
-        return _default_instances["memory"]
-    except (NameError, KeyError):
-        pass
-    return _get_default()["memory"]
-
-
-def _get_tracker() -> RelationshipTracker:
-    try:
-        return _default_instances["tracker"]
-    except (NameError, KeyError):
-        pass
-    return _get_default()["tracker"]
-
-
-def _get_conversation() -> ConversationStore:
-    try:
-        return _default_instances["conversation"]
-    except (NameError, KeyError):
-        pass
-    return _get_default()["conversation"]
-
-
-_default_instances = {}
-
-
-def _get_default():
-    if not _default_instances:
-        data_dir = os.getenv("DATA_DIR", "data")
-        _default_instances["memory"] = MemoryStore(data_dir)
-        _default_instances["tracker"] = RelationshipTracker(data_dir)
-        _default_instances["conversation"] = ConversationStore(data_dir)
-    return _default_instances
