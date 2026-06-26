@@ -480,7 +480,23 @@ metadata: dict = field(default_factory=dict)
 
 metadata 是 Projection 的"逃生舱"——任何未来需要的实验性数据都放这里，不用改 API。
 
-### 4.1.6 Reminder 特殊地位
+### 4.1.6 统一 Projection 生命周期
+
+所有 Projection 都遵循同一个生命周期接口：
+
+```python
+class Projection:
+    def project(self, events) -> dict     # 从事件流构建 Profile
+    def snapshot(self) -> dict            # 返回当前状态的快照
+    def summary(self) -> str              # 返回一句话摘要
+    def debug(self) -> dict               # 返回调试信息
+```
+
+Context Composer 不需要判断"这是 Emotion 还是 Growth"，直接调用 `projection.summary()` 就能拿到统一格式的输出。
+
+v2 阶段先在 ARCHITECTURE.md 记录这个原则，v3 统一实现。
+
+### 4.1.7 Reminder 特殊地位
 
 Reminder 不是普通的 Projection，它是**跨 Projection 的综合判断引擎**。
 
