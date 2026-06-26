@@ -438,6 +438,64 @@ class TimeContextProfile:
 
 API 一旦稳定，以后升级成本很低——None 变成具体值，外部调用者无需改代码。
 
+### 4.1.3 Event 不可修改原则
+
+**Event Log 只能 append，不能 update 或 delete。**
+
+```
+Event Log 操作：
+  ✅ append（追加）
+  ❌ update（修改）
+  ❌ delete（删除）
+```
+
+如果 Projection 算错了，重新 Projection，不要修改 Event。
+如果 AI 出了 Bug，追加一条修正 Event，不要删除旧 Event。
+如果升级了 Projection 算法，从 Event Log 重新 replay。
+
+这就是 Event Sourcing 的核心优势：**数据永远不变，只有视图在变。**
+
+### 4.1.4 Projection 可重建原则
+
+所有 Projection 应该支持从 Event Log 完整重建：
+
+```
+rebuild(person)      → 重建某个人的所有 Projection
+rebuild(all)         → 重建所有 Projection
+rebuild(from_time)   → 从某个时间点开始重建
+```
+
+因为 Projection 不存储数据，每次都是从 Event Log replay，所以重建天然支持。
+升级 Projection V2 时，不用迁移数据库，直接重新 replay。
+
+### 4.1.5 metadata 统一原则
+
+所有 Projection 都必须包含 metadata 字段：
+
+```python
+metadata: dict = field(default_factory=dict)
+# 包含：generated_at, source_event_count, version
+# 未来可扩展：embedding, llm_summary, cache, confidence, source
+```
+
+metadata 是 Projection 的"逃生舱"——任何未来需要的实验性数据都放这里，不用改 API。
+
+### 4.1.6 Reminder 特殊地位
+
+Reminder 不是普通的 Projection，它是**跨 Projection 的综合判断引擎**。
+
+```
+普通 Projection：
+  Event Log → Projection → Profile（只读事件流）
+
+Reminder（特殊）：
+  Person + Relationship + Emotion + Time + Growth → Reminder Engine → Reminders
+```
+
+Reminder 需要综合多个维度才能生成有意义的提醒（生日、失联、情绪低落、成长停滞）。
+如果未来 Reminder 越来越依赖其他 Projection，可以升级为独立的 Engine。
+v2 阶段先作为 Projection 实现，但保持升级为 Engine 的可能性。
+
 ### 4.2 内置 Projections
 
 #### person_profile — 人物画像投影
