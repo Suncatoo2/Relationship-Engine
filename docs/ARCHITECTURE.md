@@ -396,6 +396,48 @@ class Projection:
 Projection 不存储任何数据。每次被调用时，从 Event Log 重新计算。
 Event Log 变了，Projection 的输出自然变。
 
+### 4.1.1 Projection 独立性原则
+
+**Projection 之间不要互相依赖。**
+
+```
+正确：所有 Projection 都只读 Event Log
+  Event Log
+      │
+  ┌───┼───┬───┬───┐
+  ▼   ▼   ▼   ▼   ▼
+ Person Relationship Time Emotion Growth
+  │     │      │     │      │
+  ▼     ▼      ▼     ▼      ▼
+ ...   ...   ...   ...   ...
+
+错误：Projection 之间互相调用
+  Emotion Projection → 调用 → Relationship Projection ❌
+```
+
+好处：
+- 删掉一个 Projection，其他全部还能运行
+- 每个 Projection 可以独立测试
+- 未来可以并行计算多个 Projection
+
+### 4.1.2 扩展接口原则
+
+Projection 的 dataclass 应该预留扩展字段（默认 None），而不是以后加字段导致 API 变化。
+
+```python
+class TimeContextProfile:
+    # 当前实现
+    silence: SilenceInfo | None = None
+    density_7d: DensityInfo | None = None
+
+    # v2.5 扩展接口（当前 None，未来填充）
+    rhythm: dict | None = None          # 节奏模式
+    flow: dict | None = None            # 关系流向
+    density_detail: dict | None = None  # 密度增强
+```
+
+API 一旦稳定，以后升级成本很低——None 变成具体值，外部调用者无需改代码。
+
 ### 4.2 内置 Projections
 
 #### person_profile — 人物画像投影

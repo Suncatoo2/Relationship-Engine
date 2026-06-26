@@ -131,6 +131,10 @@ class TimeContextProfile:
     days_since_last_contact: int = -1
     last_chat_label: str = ""
     first_met_label: str = ""
+    memory_freshness: float = 0.0   # 0~1，记忆新鲜度
+
+    # 时间尺度
+    time_scale: str = ""            # "刚刚" / "最近" / "前段时间" / "很久以前"
 
     # 密度
     density_7d: DensityInfo | None = None
@@ -151,6 +155,11 @@ class TimeContextProfile:
     # 人生阶段
     life_stage: str = ""
 
+    # ---- v2.5 扩展接口（当前为 None，未来填充） ----
+    rhythm: dict | None = None          # Relationship Rhythm（节奏模式）
+    flow: dict | None = None            # Relationship Flow（关系流向）
+    density_detail: dict | None = None  # Memory Density 增强（average_interval, interaction_gap）
+
     # metadata
     metadata: dict = field(default_factory=dict)
 
@@ -162,10 +171,15 @@ class TimeContextProfile:
             "days_since_last_contact": self.days_since_last_contact,
             "last_chat_label": self.last_chat_label,
             "first_met_label": self.first_met_label,
+            "memory_freshness": round(self.memory_freshness, 2),
+            "time_scale": self.time_scale,
             "silence": self.silence.to_dict() if self.silence else None,
             "active_window": self.active_window.to_dict() if self.active_window else None,
             "landmarks": [l.to_dict() for l in self.landmarks],
             "life_stage": self.life_stage,
+            "rhythm": self.rhythm,
+            "flow": self.flow,
+            "density_detail": self.density_detail,
             "metadata": self.metadata,
         }
         if self.density_7d:
@@ -228,6 +242,12 @@ class TimeContextProjection(Projection):
         if all_timestamps:
             p.days_since_last_contact = (now - max(all_timestamps)).days
 
+        # memory_freshness + time_scale
+        ref_days = p.days_since_last_chat if p.days_since_last_chat >= 0 else p.days_since_last_contact
+        if ref_days >= 0:
+            p.memory_freshness = 1.0 / (1.0 + 0.01 * ref_days)
+            p.time_scale = self._time_scale(ref_days)
+
         # 密度
         p.density_7d = self._compute_density(chat_timestamps, now, 7)
         p.density_30d = self._compute_density(chat_timestamps, now, 30)
@@ -281,6 +301,18 @@ class TimeContextProjection(Projection):
             return "快一年了"
         years = days // 365
         return f"{years}年多前"
+
+    def _time_scale(self, days: int) -> str:
+        """时间尺度：人感受时间的方式"""
+        if days <= 1:
+            return "刚刚"
+        if days <= 7:
+            return "最近"
+        if days <= 30:
+            return "前段时间"
+        if days <= 180:
+            return "很久以前"
+        return "很久很久以前"
 
     def _compute_density(self, timestamps: list[datetime], now: datetime, days: int) -> DensityInfo | None:
         if not timestamps:

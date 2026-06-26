@@ -238,3 +238,58 @@ class TestProjectOne:
 
     def test_project_one_not_found(self, proj):
         assert proj.project_one([], "不存在") is None
+
+
+class TestTimeScale:
+    def test_time_scale_recent(self, proj):
+        events = make_events()  # 最后聊天1天前
+        result = proj.project(events)
+        assert result["小雨"].time_scale == "刚刚"
+
+    def test_time_scale_long_ago(self, proj):
+        now = datetime.now(timezone.utc)
+        events = [
+            create_event(type=EventType.PERSON, data={}, person="小雨",
+                         timestamp=(now - timedelta(days=200)).isoformat()),
+            create_event(type=EventType.CHAT, data={}, person="小雨",
+                         timestamp=(now - timedelta(days=200)).isoformat()),
+        ]
+        result = proj.project(events)
+        assert result["小雨"].time_scale == "很久很久以前"
+
+
+class TestMemoryFreshness:
+    def test_freshness_recent(self, proj):
+        events = make_events()  # 最后聊天1天前
+        result = proj.project(events)
+        f = result["小雨"].memory_freshness
+        assert f > 0.9  # 刚聊完，记忆很新鲜
+
+    def test_freshness_old(self, proj):
+        now = datetime.now(timezone.utc)
+        events = [
+            create_event(type=EventType.PERSON, data={}, person="小雨",
+                         timestamp=(now - timedelta(days=365)).isoformat()),
+            create_event(type=EventType.CHAT, data={}, person="小雨",
+                         timestamp=(now - timedelta(days=365)).isoformat()),
+        ]
+        result = proj.project(events)
+        f = result["小雨"].memory_freshness
+        assert f < 0.3  # 一年前，记忆模糊
+
+
+class TestExpansionFields:
+    def test_rhythm_none_by_default(self, proj):
+        events = make_events()
+        result = proj.project(events)
+        assert result["小雨"].rhythm is None
+
+    def test_flow_none_by_default(self, proj):
+        events = make_events()
+        result = proj.project(events)
+        assert result["小雨"].flow is None
+
+    def test_density_detail_none_by_default(self, proj):
+        events = make_events()
+        result = proj.project(events)
+        assert result["小雨"].density_detail is None
