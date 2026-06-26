@@ -1510,7 +1510,140 @@ GPT（调用方 AI）处理：
 
 ---
 
-*文档版本：v3.0*
-*最后更新：2026-06-25*
+## 第十二章：Phase 3 架构 — Context Composer + Prompt Builder
+
+### 12.1 三层分离原则
+
+```
+Event Log
+    │
+    ▼
+Projection Layer（7 个 Projection）
+    │
+    ▼
+Context Composer（组合 + 预算控制）
+    │
+    ▼
+ContextSnapshot（结构化数据）
+    │
+    ▼
+Prompt Builder（LLM 适配层）
+    │
+    ▼
+Prompt（最终输出给 AI 的文本）
+```
+
+### 12.2 Context Composer 约束
+
+**Context Composer 只能读取 Profile，不能读取 Event Log。**
+
+```
+正确：
+  Event Log → Projection → Profile → Context Composer → ContextSnapshot
+
+错误：
+  Context Composer → 同时读 Profile 和 Event Log ❌
+```
+
+原因：
+- Event Log 的解析逻辑只在 Projection 里有一份
+- Projection 的价值不被稀释
+- 优化 Projection 时，Context Composer 不用改
+
+### 12.3 ContextSnapshot 设计
+
+```python
+@dataclass
+class ContextSnapshot:
+    version: int = 1
+    person: PersonProfile | None = None
+    relationship: RelationshipProfile | None = None
+    time: TimeContextProfile | None = None
+    emotion: EmotionProfile | None = None
+    growth: GrowthProfile | None = None
+    conversation: ConversationProfile | None = None
+    reminder: ReminderProfile | None = None
+    excluded: list[str] = field(default_factory=list)  # 因预算被排除的 Profile
+    metadata: dict = field(default_factory=dict)
+```
+
+metadata 内容：
+```python
+{
+    "version": 1,
+    "generated_at": "2026-06-26T...",
+    "person_name": "小雨",
+    "token_used": 4200,
+    "budget_limit": 6000,
+    "projection_versions": {
+        "person": 1, "relationship": 1, "time": 1,
+        "emotion": 1, "growth": 1, "conversation": 1, "reminder": 1
+    },
+    "event_count": 1523,
+    "last_event_time": "2026-06-26T..."
+}
+```
+
+### 12.4 Context Budget — 动态优先级
+
+**Budget 不写死，按优先级动态分配。**
+
+```python
+class ProfilePriority(str, Enum):
+    HIGH = "high"      # relationship, reminder
+    MEDIUM = "medium"  # person, conversation, emotion
+    LOW = "low"        # growth, time
+
+# Composer 按优先级分配 token 预算
+# 今天生日 → person 自动多给
+# 今天情绪低落 → emotion 自动多给
+# 最近聊天频繁 → conversation 自动多给
+```
+
+### 12.5 Prompt Builder — 继承体系
+
+```python
+class BasePromptBuilder:
+    def build(self, snapshot: ContextSnapshot, style: str = "default") -> str: ...
+
+class GPTBuilder(BasePromptBuilder):
+    """Markdown 格式""" ...
+
+class ClaudeBuilder(BasePromptBuilder):
+    """XML 标签格式""" ...
+
+class GeminiBuilder(BasePromptBuilder):
+    """JSON 格式""" ...
+
+class DeepSeekBuilder(BasePromptBuilder):
+    """简洁纯文本""" ...
+```
+
+### 12.6 Confidence — 自动计算
+
+每个 Profile 的 confidence 从数据自动计算，不手动设置：
+
+```python
+confidence = f(event_count, time_span, data_completeness)
+
+# 事件越多 → confidence 越高
+# 时间跨度越长 → confidence 越高
+# 数据字段越完整 → confidence 越高
+```
+
+### 12.7 Reason Trace — 来源追溯
+
+每个 Profile 保留 `derived_from: list[str]`，记录生成该 Profile 的 event_id 列表。
+Replay 天然支持——处理每个事件时记录其 id。
+
+### 12.8 Schema Version
+
+所有 Profile 必须包含 `version: int`。
+升级 Profile 结构时递增 version，老数据可做兼容处理。
+
+---
+
+*文档版本：v3.1*
+*最后更新：2026-06-26*
 *作者：Suncatoo2*
 *架构：Everything is Event, Everything else is Projection*
