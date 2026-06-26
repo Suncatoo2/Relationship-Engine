@@ -4,10 +4,15 @@ Everything is Event.
 Event Log 是整个系统唯一的 Source of Truth。
 所有数据以 append-only JSONL 格式存储在 events.jsonl 中。
 Projection 从 Event Log 读取事件流，计算出各种视图。
+
+两种读取模式：
+  - iter_events()  — 逐条迭代，内存恒定（推荐用于大数据量）
+  - read_all()     — 全量读取，返回列表（适合小数据量）
 """
 
 import json
 import os
+from collections.abc import Generator
 from datetime import datetime, timezone, timedelta
 from .event_types import Event
 
@@ -29,40 +34,56 @@ class EventLog:
         with open(self.log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
 
-    def read_all(self) -> list[Event]:
-        """读取所有事件"""
+    # ---- 迭代器（推荐：边读边 Replay，内存恒定） ----
+
+    def iter_events(self) -> Generator[Event, None, None]:
+        """逐条迭代所有事件（内存恒定，适合大数据量）"""
         if not os.path.exists(self.log_file):
-            return []
-        events = []
+            return
         with open(self.log_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
-                    events.append(Event.from_dict(json.loads(line)))
-        return events
+                    yield Event.from_dict(json.loads(line))
+
+    def iter_by_type(self, type: str) -> Generator[Event, None, None]:
+        """按类型逐条过滤"""
+        for e in self.iter_events():
+            if e.type == type:
+                yield e
+
+    def iter_by_person(self, person: str) -> Generator[Event, None, None]:
+        """按人物逐条过滤"""
+        for e in self.iter_events():
+            if e.person == person:
+                yield e
+
+    # ---- 列表读取（小数据量，简单场景） ----
+
+    def read_all(self) -> list[Event]:
+        """读取所有事件（返回列表）"""
+        return list(self.iter_events())
 
     def read_by_type(self, type: str) -> list[Event]:
-        """按事件类型过滤"""
-        return [e for e in self.read_all() if e.type == type]
+        """按事件类型过滤（返回列表）"""
+        return list(self.iter_by_type(type))
 
     def read_by_person(self, person: str) -> list[Event]:
-        """按人物过滤"""
-        return [e for e in self.read_all() if e.person == person]
+        """按人物过滤（返回列表）"""
+        return list(self.iter_by_person(person))
 
     def read_recent(self, days: int = 30) -> list[Event]:
         """读取最近 N 天的事件"""
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         result = []
-        for e in self.read_all():
+        for e in self.iter_events():
             try:
                 ts = datetime.fromisoformat(e.timestamp)
-                # 处理无时区的时间戳
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=timezone.utc)
                 if ts >= cutoff:
                     result.append(e)
             except (ValueError, TypeError):
-                # 无法解析的时间戳，保留
                 result.append(e)
         return result
 
@@ -70,12 +91,10 @@ class EventLog:
         """在所有事件中搜索关键词（大小写不敏感）"""
         keyword_lower = keyword.lower()
         results = []
-        for e in self.read_all():
-            # 搜索 data 字段的所有值
+        for e in self.iter_events():
             if self._search_dict(e.data, keyword_lower):
                 results.append(e)
                 continue
-            # 搜索 person 字段
             if keyword_lower in e.person.lower():
                 results.append(e)
         return results

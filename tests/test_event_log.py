@@ -162,6 +162,41 @@ class TestClear:
         assert populated_log.read_all() == []
 
 
+class TestIterators:
+    def test_iter_events(self, populated_log):
+        events = list(populated_log.iter_events())
+        assert len(events) == 7
+
+    def test_iter_events_empty(self, log):
+        assert list(log.iter_events()) == []
+
+    def test_iter_events_same_as_read_all(self, populated_log):
+        iter_ids = [e.id for e in populated_log.iter_events()]
+        read_ids = [e.id for e in populated_log.read_all()]
+        assert iter_ids == read_ids
+
+    def test_iter_by_type(self, populated_log):
+        chats = list(populated_log.iter_by_type(EventType.CHAT))
+        assert len(chats) == 3
+        assert all(e.type == "chat" for e in chats)
+
+    def test_iter_by_person(self, populated_log):
+        xiaoyu = list(populated_log.iter_by_person("小雨"))
+        assert len(xiaoyu) == 6
+        assert all(e.person == "小雨" for e in xiaoyu)
+
+    def test_iter_is_lazy(self, log):
+        """验证迭代器是惰性的：提前 break 不会读完全部文件"""
+        for i in range(100):
+            log.append(create_event(type=EventType.CHAT, data={"i": i}, person="test"))
+        count = 0
+        for e in log.iter_events():
+            count += 1
+            if count == 5:
+                break
+        assert count == 5  # 只读了 5 条，不是 100 条
+
+
 class TestPerformance:
     def test_1000_events_append(self, log):
         start = time.time()
