@@ -11,6 +11,7 @@
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from ..event_types import Event, EventType
 from .base import Projection
@@ -45,6 +46,7 @@ class PersonProfile:
     facts: list[FactRecord] = field(default_factory=list)
     fact_count: int = 0
     last_updated: str = ""
+    metadata: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -57,6 +59,7 @@ class PersonProfile:
             "facts": [f.to_dict() for f in self.facts],
             "fact_count": self.fact_count,
             "last_updated": self.last_updated,
+            "metadata": self.metadata,
         }
 
 
@@ -69,12 +72,20 @@ class PersonProjection(Projection):
     def project(self, events) -> dict[str, PersonProfile]:
         """输入事件流，输出 {人名: PersonProfile}"""
         profiles: dict[str, PersonProfile] = {}
+        event_list = list(events)
 
-        for e in events:
+        for e in event_list:
             if e.type == EventType.PERSON:
                 self._apply_person_event(profiles, e)
             elif e.type == EventType.FACT:
                 self._apply_fact_event(profiles, e)
+
+        for p in profiles.values():
+            p.metadata = {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "source_event_count": len(event_list),
+                "version": "1.0",
+            }
 
         return profiles
 

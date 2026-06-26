@@ -224,8 +224,8 @@ class TimeContextProjection(Projection):
         person_events = [e for e in events if e.type == EventType.PERSON]
         milestone_events = [e for e in events if e.type == EventType.MILESTONE]
 
-        all_timestamps = [self._parse_ts(e.timestamp) for e in events if self._parse_ts(e.timestamp)]
-        chat_timestamps = [self._parse_ts(e.timestamp) for e in chat_events if self._parse_ts(e.timestamp)]
+        all_timestamps = [self.parse_ts(e.timestamp) for e in events if self.parse_ts(e.timestamp)]
+        chat_timestamps = [self.parse_ts(e.timestamp) for e in chat_events if self.parse_ts(e.timestamp)]
 
         # 相对时间
         if chat_timestamps:
@@ -432,12 +432,4 @@ class TimeContextProjection(Projection):
 
         return landmarks
 
-    @staticmethod
-    def _parse_ts(ts_str: str) -> datetime | None:
-        try:
-            ts = datetime.fromisoformat(ts_str)
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            return ts
-        except (ValueError, TypeError):
-            return None
+

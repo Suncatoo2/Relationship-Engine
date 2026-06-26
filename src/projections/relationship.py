@@ -13,7 +13,7 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from ..event_types import Event, EventType, RelationStage, MilestoneType, DECAY_PARAMS
 from .base import Projection
@@ -272,7 +272,7 @@ class RelationshipProjection(Projection):
         if not history:
             return "稳定"
 
-        cutoff = datetime.now(timezone.utc) - __import__("datetime").timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         recent_delta = 0
         for r in history:
             try:

@@ -8,7 +8,6 @@ Event Log 变了，Projection 的输出自然变。
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Generator
 from datetime import datetime, timezone, timedelta
 
 from ..event_types import Event
@@ -22,42 +21,51 @@ class Projection(ABC):
     """
 
     @abstractmethod
-    def project(self, events: list[Event] | Generator) -> dict:
-        """输入事件流，输出结构化视图
-
-        Args:
-            events: 事件列表或迭代器
-
-        Returns:
-            结构化 dict，具体内容由子类定义
-        """
+    def project(self, events: list[Event]) -> dict:
+        """输入事件流，输出结构化视图"""
         ...
+
+    def project_one(self, events: list[Event], name: str):
+        """查询单个人的 Profile（默认实现）"""
+        profiles = self.project(events)
+        return profiles.get(name)
 
     # ---- 通用辅助方法 ----
 
     @staticmethod
-    def filter_by_type(events, type: str) -> list[Event]:
-        """按事件类型过滤"""
-        return [e for e in events if e.type == type]
+    def parse_ts(timestamp_str: str) -> datetime | None:
+        """解析时间戳字符串，统一处理时区"""
+        try:
+            ts = datetime.fromisoformat(timestamp_str)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts
+        except (ValueError, TypeError):
+            return None
 
     @staticmethod
-    def filter_by_person(events, person: str) -> list[Event]:
+    def filter_by_event_type(events: list[Event], event_type: str) -> list[Event]:
+        """按事件类型过滤"""
+        return [e for e in events if e.type == event_type]
+
+    # 兼容旧名
+    filter_by_type = filter_by_event_type
+
+    @staticmethod
+    def filter_by_person(events: list[Event], person: str) -> list[Event]:
         """按人物过滤"""
         return [e for e in events if e.person == person]
 
     @staticmethod
-    def filter_by_days(events, days: int) -> list[Event]:
+    def filter_by_days(events: list[Event], days: int) -> list[Event]:
         """过滤出最近 N 天的事件"""
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         result = []
         for e in events:
-            try:
-                ts = datetime.fromisoformat(e.timestamp)
-                if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
-                if ts >= cutoff:
-                    result.append(e)
-            except (ValueError, TypeError):
+            ts = Projection.parse_ts(e.timestamp)
+            if ts is None:
+                result.append(e)
+            elif ts >= cutoff:
                 result.append(e)
         return result
 
@@ -65,23 +73,17 @@ class Projection(ABC):
     def sort_by_time(events: list[Event], desc: bool = True) -> list[Event]:
         """按时间排序"""
         def _ts(e):
-            try:
-                return datetime.fromisoformat(e.timestamp)
-            except (ValueError, TypeError):
-                return datetime.min.replace(tzinfo=timezone.utc)
+            return Projection.parse_ts(e.timestamp) or datetime.min.replace(tzinfo=timezone.utc)
         return sorted(events, key=_ts, reverse=desc)
 
     @staticmethod
     def days_since(timestamp_str: str) -> int:
         """计算某个时间戳距今多少天"""
-        try:
-            ts = datetime.fromisoformat(timestamp_str)
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            delta = datetime.now(timezone.utc) - ts
-            return max(0, delta.days)
-        except (ValueError, TypeError):
+        ts = Projection.parse_ts(timestamp_str)
+        if ts is None:
             return -1
+        delta = datetime.now(timezone.utc) - ts
+        return max(0, delta.days)
 
     @staticmethod
     def get_latest(events: list[Event]) -> Event | None:
@@ -89,10 +91,7 @@ class Projection(ABC):
         if not events:
             return None
         def _ts(e):
-            try:
-                return datetime.fromisoformat(e.timestamp)
-            except (ValueError, TypeError):
-                return datetime.min.replace(tzinfo=timezone.utc)
+            return Projection.parse_ts(e.timestamp) or datetime.min.replace(tzinfo=timezone.utc)
         return max(events, key=_ts)
 
     @staticmethod
@@ -113,3 +112,21 @@ class Projection(ABC):
         for e in events:
             counts[e.type] = counts.get(e.type, 0) + 1
         return counts
+
+    @staticmethod
+    def group_by_person(events: list[Event]) -> dict[str, list[Event]]:
+        """按人物分组事件"""
+        by_person: dict[str, list[Event]] = {}
+        for e in events:
+            if e.person:
+                by_person.setdefault(e.person, []).append(e)
+        return by_person
+
+    @staticmethod
+    def make_metadata(event_count: int, version: str = "1.0") -> dict:
+        """生成统一的 metadata 字典"""
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "source_event_count": event_count,
+            "version": version,
+        }

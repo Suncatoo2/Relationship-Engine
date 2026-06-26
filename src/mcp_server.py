@@ -7,6 +7,8 @@ Everything is Event. Everything else is Projection.
 """
 
 import os
+import json
+from datetime import datetime, timezone, timedelta
 from mcp.server.fastmcp import FastMCP
 from .event_types import create_event, EventType
 from .event_log import EventLog
@@ -18,7 +20,6 @@ from .projections.prompt_builder import get_builder
 
 _data_dir = os.getenv("DATA_DIR", "data")
 _event_log = EventLog(_data_dir)
-_composer = ContextComposer()
 
 mcp = FastMCP("RelationshipEventOS")
 
@@ -253,7 +254,6 @@ async def get_person(name: str) -> str:
     profile = proj.project_one(list(_event_log.iter_events()), name)
     if not profile:
         return f"未找到 {name}"
-    import json
     return json.dumps(profile.to_dict(), ensure_ascii=False, indent=2)
 
 
@@ -270,12 +270,25 @@ async def get_events(
         days: 最近多少天
         event_type: 事件类型过滤（可选）
     """
-    import json
     events = list(_event_log.iter_events())
     if person_name:
         events = [e for e in events if e.person == person_name]
     if event_type:
         events = [e for e in events if e.type == event_type]
+    # days 过滤
+    if days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        filtered = []
+        for e in events:
+            try:
+                ts = datetime.fromisoformat(e.timestamp)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if ts >= cutoff:
+                    filtered.append(e)
+            except (ValueError, TypeError):
+                filtered.append(e)
+        events = filtered
     events = events[-100:]  # 最多返回100条
     return json.dumps([e.to_dict() for e in events], ensure_ascii=False, indent=2)
 
@@ -286,7 +299,6 @@ async def get_reminders() -> str:
     from .projections.reminder import ReminderProjection
     proj = ReminderProjection()
     profile = proj.project(list(_event_log.iter_events()))
-    import json
     return json.dumps(profile.to_dict(), ensure_ascii=False, indent=2)
 
 
@@ -298,7 +310,6 @@ async def search(keyword: str) -> str:
         keyword: 搜索关键词
     """
     results = _event_log.search(keyword)
-    import json
     return json.dumps([e.to_dict() for e in results[:20]], ensure_ascii=False, indent=2)
 
 
@@ -312,7 +323,6 @@ def list_people() -> str:
     from .projections.person import PersonProjection
     proj = PersonProjection()
     profiles = proj.project(list(_event_log.iter_events()))
-    import json
     return json.dumps(
         {name: p.to_dict() for name, p in profiles.items()},
         ensure_ascii=False, indent=2,
@@ -322,7 +332,6 @@ def list_people() -> str:
 @mcp.resource("relationship://stats")
 def get_stats() -> str:
     """获取系统统计摘要"""
-    import json
     events = list(_event_log.iter_events())
     type_counts: dict[str, int] = {}
     persons: set[str] = set()

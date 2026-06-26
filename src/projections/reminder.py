@@ -181,7 +181,7 @@ class ReminderProjection(Projection):
 
             if e.type == EventType.MILESTONE:
                 # 纪念日提醒
-                ts = self._parse_ts(e.timestamp)
+                ts = self.parse_ts(e.timestamp)
                 if ts:
                     days_since = (now - ts).days
                     for n in [100, 200, 365]:
@@ -232,7 +232,7 @@ class ReminderProjection(Projection):
         chat_events = [e for e in events if e.type == EventType.CHAT]
         if chat_events:
             latest = max(chat_events, key=lambda e: e.timestamp)
-            ts = self._parse_ts(latest.timestamp)
+            ts = self.parse_ts(latest.timestamp)
             if ts:
                 days = (now - ts).days
                 if days >= 7:
@@ -279,7 +279,7 @@ class ReminderProjection(Projection):
             return items
 
         latest = max(growth_events, key=lambda e: e.timestamp)
-        ts = self._parse_ts(latest.timestamp)
+        ts = self.parse_ts(latest.timestamp)
         if ts:
             days = (now - ts).days
             if days >= 90:
@@ -322,12 +322,4 @@ class ReminderProjection(Projection):
                 ))
         return items
 
-    @staticmethod
-    def _parse_ts(ts_str: str) -> datetime | None:
-        try:
-            ts = datetime.fromisoformat(ts_str)
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            return ts
-        except (ValueError, TypeError):
-            return None
+

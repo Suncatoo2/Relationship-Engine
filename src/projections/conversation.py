@@ -123,7 +123,7 @@ class ConversationProjection(Projection):
 
         # 按时间排序
         sorted_events = sorted(events, key=lambda e: e.timestamp)
-        timestamps = [self._parse_ts(e.timestamp) for e in sorted_events]
+        timestamps = [self.parse_ts(e.timestamp) for e in sorted_events]
         valid_ts = [ts for ts in timestamps if ts]
 
         # 来源追溯
@@ -217,12 +217,4 @@ class ConversationProjection(Projection):
         except (ValueError, TypeError):
             return False
 
-    @staticmethod
-    def _parse_ts(ts_str: str) -> datetime | None:
-        try:
-            ts = datetime.fromisoformat(ts_str)
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            return ts
-        except (ValueError, TypeError):
-            return None
+
