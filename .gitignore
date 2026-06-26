@@ -2,9 +2,10 @@ __pycache__/
 *.pyc
 *.pyo
 .env
-data/*.json
 *.egg-info/
 dist/
 build/
 .venv/
 venv/
+.pytest_cache/
+data/events.jsonl
