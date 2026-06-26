@@ -496,7 +496,55 @@ Context Composer 不需要判断"这是 Emotion 还是 Growth"，直接调用 `p
 
 v2 阶段先在 ARCHITECTURE.md 记录这个原则，v3 统一实现。
 
-### 4.1.7 Reminder 特殊地位
+### 4.1.7 Analyzer vs Reasoning Projection
+
+Projection 分为两类，职责完全不同：
+
+```
+Analyzer Projection（分析器）
+  只从 Event Log 读取数据，输出结构化分析。
+  不做判断，不生成建议。
+
+  - Person:       人物画像
+  - Relationship: 关系状态
+  - Time:         时间感知
+  - Emotion:      情绪摘要
+  - Growth:       成长时间线
+
+Reasoning Projection（推理器）
+  融合多个 Analyzer 的结果，生成判断和建议。
+  跨 Projection 综合分析。
+
+  - Reminder:  综合多维度生成提醒
+  - Context:   综合所有 Projection 生成 AI 上下文
+  - Insight:   综合所有 Projection 生成结构化洞察（v3）
+```
+
+这个区分很重要：Analyzer 可以独立运行，Reasoning 依赖 Analyzer 的输出。
+
+### 4.1.8 统一 Schema Version
+
+所有 Projection 的 Profile 输出都必须包含 `version: int` 字段。
+
+```python
+@dataclass
+class PersonProfile:
+    version: int = 1
+    name: str = ""
+    ...
+
+@dataclass
+class RelationshipProfile:
+    version: int = 1
+    stage: str = ""
+    ...
+```
+
+未来升级 Profile 结构时（加字段、改格式），递增 version。
+老数据知道自己是 v1，新代码可以做兼容处理。
+这是几乎所有成熟系统的 schema migration 基础。
+
+### 4.1.9 Reminder 特殊地位
 
 Reminder 不是普通的 Projection，它是**跨 Projection 的综合判断引擎**。
 
