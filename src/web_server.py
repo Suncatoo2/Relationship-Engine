@@ -145,11 +145,14 @@ async def chat_stream(req: ChatRequest):
     )
     _event_log.append(user_event)
 
+    # 1b. 自动提取事实（用户明确声明个人信息时保存为 fact）
+    _auto_extract_facts(req.message, person)
+
     # 2. 获取历史消息
     history = get_conversation_history(req.conversation_id, limit=20)
 
-    # 3. 构建 Context（通过 Memory Engine）
-    memory_result = _memory_engine.recall(person, req.conversation_id)
+    # 3. 构建 Context（通过 Memory Engine + Selector）
+    memory_result = _memory_engine.recall(person, query=req.message, conversation_id=req.conversation_id)
     context = memory_result.prompt_text
 
     # 4. 流式生成回复
@@ -285,6 +288,48 @@ def get_conversation_history(conversation_id: str, limit: int = 20) -> list[dict
         if e.type == EventType.CHAT and e.data.get("conversation_id") == conversation_id:
             messages.append({"role": e.data.get("role", "user"), "content": e.data.get("content", "")})
     return messages[-limit:]
+
+
+def _auto_extract_facts(message: str, person: str):
+    """自动提取事实：当用户明确声明个人信息时，保存为 fact 事件
+
+    检测模式：
+    - "记住：XXX" → 直接保存
+    - "我叫XXX" "我是XXX" "我喜欢XXX" → 保存
+    """
+    import re
+    msg = message.strip()
+
+    # 模式1: "记住：XXX"
+    if msg.startswith("记住：") or msg.startswith("记住:"):
+        content = msg[3:].strip()
+        if content:
+            _event_log.append(create_event(
+                type=EventType.FACT, person=person,
+                data={"content": content, "category": "general", "importance": 8,
+                      "source": "user_direct", "confidence": 0.95, "times_confirmed": 1},
+            ))
+            return
+
+    # 模式2: "我是..." "我喜欢..." "我生日是..." "我养了..."
+    patterns = [
+        (r'^我是(.+)', 'general'),
+        (r'^我(?:最)?喜欢(.+)', 'preference'),
+        (r'^我(?:的)?生日是(.+)', 'birthday'),
+        (r'^我养了(.+)', 'general'),
+        (r'^我(?:是|学)(.+)专业', 'general'),
+    ]
+    for pat, cat in patterns:
+        m = re.match(pat, msg)
+        if m:
+            content = m.group(1).strip().rstrip('。.!！')
+            if content:
+                _event_log.append(create_event(
+                    type=EventType.FACT, person=person,
+                    data={"content": msg, "category": cat, "importance": 8,
+                          "source": "user_direct", "confidence": 0.95, "times_confirmed": 1},
+                ))
+            return
 
 
 def save_prompt_log(

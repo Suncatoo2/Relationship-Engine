@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from .event_log import EventLog
 from .projections.context import ContextComposer, ContextSnapshot
 from .projections.prompt_builder import get_builder, BasePromptBuilder
+from .memory_selector import MemorySelector, extract_facts, FactItem
 
 
 @dataclass
@@ -51,25 +52,57 @@ class MemoryEngine:
         self.event_log = event_log or EventLog("data")
         self.composer = composer or ContextComposer()
         self.builder = get_builder(builder_name)
+        self.selector = MemorySelector()
 
-    def recall(self, person_name: str, conversation_id: str = "") -> MemoryResult:
+    def recall(self, person_name: str, query: str = "", conversation_id: str = "") -> MemoryResult:
         """回忆：为某个人构建完整的记忆上下文
 
-        这是 Memory Engine 的核心方法。
-        输入：人名
+        输入：人名 + 当前问题
         输出：ContextSnapshot + Prompt 文本 + Debug 信息
         """
         # 1. 读取所有事件
         events = list(self.event_log.iter_events())
 
-        # 2. 调用 Context Composer 生成 ContextSnapshot
+        # 2. 提取事实 + Memory Selector 筛选
+        all_facts = extract_facts(events)
+        person_facts = [f for f in all_facts if any(
+            e.person == person_name and e.type == "fact"
+            for e in events if hasattr(e, 'id') and e.id == f.created_at
+        ) or True]  # 简化：把所有 fact 都算上，后续按 person 过滤
+        # 按 person 过滤
+        person_events = [e for e in events if e.person == person_name]
+        person_fact_events = [e for e in person_events if e.type == "fact"]
+        person_facts = [FactItem(
+            content=e.data.get("content", ""),
+            category=e.data.get("category", "general"),
+            importance=e.data.get("importance", 5),
+            importance_reason="",
+            source="user_direct",
+            confidence=0.9,
+            created_at=e.timestamp,
+            times_confirmed=1,
+        ) for e in person_fact_events]
+
+        selected_facts = self.selector.select(query, person_facts) if query else person_facts[:10]
+
+        # 3. 调用 Context Composer 生成 ContextSnapshot
         snapshot = self.composer.compose(events, person_name)
 
-        # 3. 调用 Prompt Builder 生成文本
+        # 4. 调用 Prompt Builder 生成文本
         prompt_text = self.builder.build(snapshot)
 
-        # 4. 构建 Debug 信息
+        # 5. 把筛选后的事实注入 Context
+        if selected_facts:
+            facts_text = "🧠 关于这个人的记忆：\n"
+            for f in selected_facts:
+                facts_text += f"  [{f.category}] {f.content}\n"
+            prompt_text = facts_text + "\n" + prompt_text
+
+        # 6. 构建 Debug 信息
         debug_info = self._build_debug_info(snapshot, events, person_name)
+        debug_info["total_facts"] = len(person_facts)
+        debug_info["selected_facts"] = len(selected_facts)
+        debug_info["selected_fact_contents"] = [f.content for f in selected_facts]
 
         # 5. 元数据
         metadata = {
