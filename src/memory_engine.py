@@ -23,6 +23,7 @@ from .event_log import EventLog
 from .projections.context import ContextComposer, ContextSnapshot
 from .projections.prompt_builder import get_builder, BasePromptBuilder
 from .memory_selector import MemorySelector, extract_facts, FactItem
+from .memory_reasoner import MemoryReasoner
 
 
 @dataclass
@@ -53,6 +54,7 @@ class MemoryEngine:
         self.composer = composer or ContextComposer()
         self.builder = get_builder(builder_name)
         self.selector = MemorySelector()
+        self.reasoner = MemoryReasoner()  # v0.35: 接口预留, v0.4: 实现推理
 
     def recall(self, person_name: str, query: str = "", conversation_id: str = "") -> MemoryResult:
         """回忆：为某个人构建完整的记忆上下文
@@ -84,6 +86,9 @@ class MemoryEngine:
         ) for e in person_fact_events]
 
         selected_facts = self.selector.select(query, person_facts) if query else person_facts[:10]
+
+        # Step 4: Memory Reasoner（v0.35: 返回空, v0.4: 实现推理）
+        reason_result = self.reasoner.reason(query, selected_facts)
 
         # 3. 调用 Context Composer 生成 ContextSnapshot
         snapshot = self.composer.compose(events, person_name)
