@@ -22,12 +22,15 @@ from pydantic import BaseModel
 
 from .event_types import create_event, EventType
 from .event_log import EventLog
+from .memory_engine import MemoryEngine
 
 
 # ---- 全局实例 ----
 
 _data_dir = os.getenv("DATA_DIR", "data")
 _event_log = EventLog(_data_dir)
+_memory_engine = MemoryEngine(event_log=_event_log)
+_prompt_log_file = os.path.join(_data_dir, "prompts.jsonl")
 
 app = FastAPI(title="Relationship Event OS")
 WEB_DIR = Path(__file__).parent / "web"
@@ -54,14 +57,11 @@ class ConversationInfo(BaseModel):
 async def build_context(person_name: str, conversation_id: str) -> str:
     """构建发送给 LLM 的 Context。
 
-    Step 1: 返回空 Context（离线模式）
-    Step 2: 调用 Context Composer，注入记忆
+    调用 Memory Engine，自动读取记忆并生成 Context。
+    Memory Engine 负责：读取 Event Log → Context Composer → Prompt Builder
     """
-    # TODO: Step 2 实现
-    # events = list(_event_log.iter_events())
-    # snapshot = ContextComposer().compose(events, person_name)
-    # return PromptBuilder().build(snapshot)
-    return ""
+    result = _memory_engine.recall(person_name, conversation_id)
+    return result.prompt_text
 
 
 async def stream_llm_response(message: str, context: str, history: list[dict]) -> AsyncGenerator[str, None]:
@@ -72,28 +72,34 @@ async def stream_llm_response(message: str, context: str, history: list[dict]) -
     """
     # TODO: Step 3 替换为真实 LLM
     # provider = create_provider()
+    # system_prompt = build_system_prompt(context)
+    # messages = history + [{"role": "user", "content": message}]
     # async for chunk in provider.stream_chat(system_prompt, messages):
     #     yield chunk
 
-    # 离线模式：模拟流式回复
-    reply = generate_offline_reply(message, history)
+    # 离线模式：模拟流式回复（现在能感知 Context）
+    reply = generate_offline_reply(message, history, context)
     for char in reply:
         yield char
         await asyncio.sleep(0.02)
 
 
-def generate_offline_reply(message: str, history: list[dict]) -> str:
-    """离线模式的智能回复（不需要 LLM）"""
+def generate_offline_reply(message: str, history: list[dict], context: str) -> str:
+    """离线模式的智能回复（利用 Context）"""
     msg = message.strip().lower()
 
     if not history:
-        return f"你好！这是我们第一次聊天。\n\n你刚才说了：「{message}」\n\n我记住了。以后配置好 API Key，我就能真正理解你、记住你，并随着时间陪伴你成长。"
+        if context:
+            return f"你好！我记住了关于你的信息。\n\n我能感觉到我们之前有过交流。配置好 API Key 后，我能真正理解你、记住你，并随着时间陪伴你成长。"
+        return f"你好！这是我们第一次聊天。\n\n你刚才说了：「{message}」\n\n我记住了。"
 
     if "你好" in msg or "hi" in msg or "hello" in msg:
         return f"你好！我们已经聊了 {len(history)} 条消息了。\n\n有什么想聊的吗？"
 
     if "记住" in msg or "记得" in msg:
-        return f"我记得我们之前的对话。\n\n我们已经聊了 {len(history)} 条消息。\n\n配置 API Key 后，我能真正理解你们的关系。"
+        if context:
+            return f"我记得我们的对话。\n\n我能感受到我们之间的关系。配置 API Key 后，我能结合这些记忆给出更有意义的回复。"
+        return f"我记得我们之前的对话。\n\n我们已经聊了 {len(history)} 条消息。"
 
     if "?" in msg or "？" in msg:
         return f"这是一个好问题。\n\n你问的是：「{message}」\n\n离线模式下我只能做简单回复。配置好 API Key 后，我能结合你们的关系背景给出有意义的回答。"
@@ -126,8 +132,9 @@ async def chat_stream(req: ChatRequest):
     # 2. 获取历史消息
     history = get_conversation_history(req.conversation_id, limit=20)
 
-    # 3. 构建 Context（Step 2 填充）
-    context = await build_context(person, req.conversation_id)
+    # 3. 构建 Context（通过 Memory Engine）
+    memory_result = _memory_engine.recall(person, req.conversation_id)
+    context = memory_result.prompt_text
 
     # 4. 流式生成回复
     async def generate():
@@ -142,6 +149,17 @@ async def chat_stream(req: ChatRequest):
             person=person,
             data={"role": "assistant", "content": full_reply, "conversation_id": req.conversation_id},
         ))
+
+        # 6. 保存 Prompt Log（完整 prompt 链路）
+        save_prompt_log(
+            conversation_id=req.conversation_id,
+            person_name=person,
+            user_message=req.message,
+            context=context,
+            system_prompt=f"你是 Relationship OS...\n\n{context}",
+            assistant_reply=full_reply,
+            debug_info=memory_result.debug_info,
+        )
 
         yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
 
@@ -214,6 +232,30 @@ async def stats():
     }
 
 
+# ---- Debug API ----
+
+@app.get("/api/debug/context/{person_name}")
+async def debug_context(person_name: str):
+    """获取某人的 Memory Debug 信息"""
+    return {"summary": _memory_engine.get_debug_summary(person_name)}
+
+
+@app.get("/api/debug/prompts")
+async def debug_prompts(limit: int = 10):
+    """获取最近的 Prompt Log"""
+    if not os.path.exists(_prompt_log_file):
+        return []
+    with open(_prompt_log_file, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    entries = []
+    for line in lines[-limit:]:
+        try:
+            entries.append(json.loads(line.strip()))
+        except json.JSONDecodeError:
+            pass
+    return entries
+
+
 # ---- 辅助函数 ----
 
 def get_conversation_history(conversation_id: str, limit: int = 20) -> list[dict]:
@@ -224,3 +266,28 @@ def get_conversation_history(conversation_id: str, limit: int = 20) -> list[dict
         if e.type == EventType.CHAT and e.data.get("conversation_id") == conversation_id:
             messages.append({"role": e.data.get("role", "user"), "content": e.data.get("content", "")})
     return messages[-limit:]
+
+
+def save_prompt_log(
+    conversation_id: str,
+    person_name: str,
+    user_message: str,
+    context: str,
+    system_prompt: str,
+    assistant_reply: str,
+    debug_info: dict,
+):
+    """保存完整的 Prompt 链路（用于 Debug 和回放）"""
+    os.makedirs(os.path.dirname(_prompt_log_file), exist_ok=True)
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "conversation_id": conversation_id,
+        "person_name": person_name,
+        "user_message": user_message,
+        "context": context,
+        "system_prompt": system_prompt[:2000],  # 截断避免文件过大
+        "assistant_reply": assistant_reply,
+        "debug": debug_info,
+    }
+    with open(_prompt_log_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
