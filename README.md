@@ -154,7 +154,11 @@ Relationship-Engine/
 │   ├── event_log.py             # append-only JSONL 存储
 │   ├── provider.py              # LLM Provider Interface
 │   ├── mcp_server.py            # MCP Server（7 Write + 5 Read + 2 Resources）
-│   ├── main.py                  # 入口（stdio / HTTP）
+│   ├── web_server.py            # Web Server（SSE 流式 + 会话管理）
+│   ├── memory_engine.py         # Memory Engine（记忆引擎）
+│   ├── main.py                  # 入口（--web / --http / stdio）
+│   ├── web/
+│   │   └── chat.html            # ChatGPT 风格聊天界面
 │   └── projections/
 │       ├── base.py              # Projection 基类
 │       ├── person.py            # 人物画像
@@ -168,10 +172,26 @@ Relationship-Engine/
 │       └── prompt_builder.py    # Prompt Builder
 ├── tests/                       # 249 单元测试 + 47 验收测试
 ├── docs/
+│   ├── Vision.md                # 项目灵魂
+│   ├── ROADMAP.md               # 版本路线图
 │   ├── ARCHITECTURE.md          # 完整架构设计文档
-│   └── PHASE3_REPORT.md         # Phase 3 发布报告
+│   ├── PHASE3_REPORT.md         # Phase 3 发布报告
+│   └── SESSION.md               # 开发存档
 └── data/                        # 持久化数据（JSONL）
 ```
+
+---
+
+## 开发进度
+
+| 版本 | 内容 | 状态 |
+|------|------|------|
+| v0.1 | 聊天（SSE 流式 + Event Log + ChatGPT 风格 UI） | ✅ 完成 |
+| v0.2 | Memory Engine（自动读取记忆 + Prompt Log + Debug 面板） | ✅ 完成 |
+| v0.3 | Provider Layer（模型无关接入） | 📋 计划中 |
+| v0.4 | Relationship Timeline | 📋 计划中 |
+| v0.5 | Emotion + Reminder | 📋 计划中 |
+| v1.0 | Relationship OS | 🎯 目标 |
 
 ---
 

@@ -13,15 +13,16 @@
 - [x] 重启后记忆保留
 - [x] 会话管理（多对话）
 
-## v0.2 — Memory Engine（进行中）
+## v0.2 — Memory Engine（已完成 ✅）
 
-- [ ] Memory Engine 独立模块
-- [ ] 自动读取记忆 → 生成 Context
-- [ ] Prompt Log 保存
-- [ ] Debug 面板（查看 Context）
-- [ ] ContextSnapshot 结构化输出
+- [x] Memory Engine 独立模块（可替换）
+- [x] 自动读取记忆 → 生成 Context
+- [x] ContextSnapshot 结构化输出
+- [x] Prompt Log 保存（完整 prompt 链路）
+- [x] Debug 面板（🧠 Memory 按钮）
+- [x] Debug API
 
-## v0.3 — Relationship Timeline
+## v0.3 — Provider Layer（进行中）
 
 - [ ] 关系时间线展示
 - [ ] 重要事件标记
