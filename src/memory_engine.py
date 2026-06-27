@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 
 from .event_log import EventLog
 from .projections.context import ContextComposer, ContextSnapshot
-from .projections.prompt_builder import get_builder, BasePromptBuilder
-from .memory_selector import MemorySelector, extract_facts, FactItem
+from .projections.prompt_builder import get_builder
+from .memory_selector import MemorySelector, extract_facts
 from .memory_reasoner import MemoryReasoner
 
 

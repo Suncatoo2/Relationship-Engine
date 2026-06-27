@@ -56,16 +56,9 @@ class ConversationInfo(BaseModel):
     updated_at: str
 
 
-# ---- Memory Engine 接口（Step 2 填充） ----
+# ---- Memory Engine 接口 ----
 
-async def build_context(person_name: str, conversation_id: str) -> str:
-    """构建发送给 LLM 的 Context。
-
-    调用 Memory Engine，自动读取记忆并生成 Context。
-    Memory Engine 负责：读取 Event Log → Context Composer → Prompt Builder
-    """
-    result = _memory_engine.recall(person_name, conversation_id)
-    return result.prompt_text
+# build_context() 已移除 — 改用 Memory Engine.recall() 直接调用
 
 
 async def stream_llm_response(message: str, context: str, history: list[dict]) -> AsyncGenerator[str, None]:
@@ -325,11 +318,15 @@ def _auto_extract_facts(message: str, person: str):
         return
 
     def _save_fact(content, category, source, confidence):
-        # 检测同 category 冲突 → deprecate 旧值
+        # 检查同 category 已有 active fact → append deprecation event
         all_events = list(_event_log.iter_events())
         for old in all_events:
             if old.type == "fact" and old.person == person and old.data.get("category") == category and old.data.get("status") == "active":
-                old.data["status"] = "deprecated"
+                _event_log.append(create_event(
+                    type=EventType.FACT, person=person,
+                    data={**old.data, "status": "deprecated",
+                          "deprecated_at": now_ts[:10], "replaced_by_memory_id": str(uuid.uuid4())[:8]},
+                ))
 
         mid = str(uuid.uuid4())[:8]
         _event_log.append(create_event(
@@ -361,7 +358,7 @@ def _auto_extract_facts(message: str, person: str):
         if m:
             captured = m.group(1).strip().rstrip('。.!！？?')
             if captured and len(captured) > 1 and not any(q in captured for q in ('什么', '怎么', '为什么', '谁', '哪')):
-                _save_fact(msg, cat, "user_direct", 0.95)
+                _save_fact(captured, cat, "user_direct", 0.95)
             return
 
 

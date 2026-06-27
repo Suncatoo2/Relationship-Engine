@@ -45,15 +45,5 @@ class MemoryReasoner:
         return ReasonerOutput()
 
 
-# 预留接口（v0.4 实现）
-class EmotionEngine:
-    def run(self, events) -> dict:
-        return {}
-
-class RelationshipEngine:
-    def run(self, events) -> dict:
-        return {}
-
-class PersonaEngine:
-    def run(self, facts, inferences) -> dict:
-        return {}
+# 预留引擎接口 — v0.4 实现
+# EmotionEngine, RelationshipEngine, PersonaEngine
