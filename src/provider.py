@@ -86,6 +86,11 @@ class OpenAICompatibleProvider(LLMProvider):
         }
         req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
 
+        import time as _time
+        _start = _time.time()
+        _input_tokens = len(system_prompt) // 2 + sum(len(m.get("content", "")) // 2 for m in messages)
+        _output_tokens = 0
+
         try:
             resp = urllib.request.urlopen(req, timeout=120)
             buffer = ""
@@ -105,11 +110,24 @@ class OpenAICompatibleProvider(LLMProvider):
                             delta = data.get("choices", [{}])[0].get("delta", {})
                             content = delta.get("content", "")
                             if content:
+                                _output_tokens += 1
                                 yield content
                         except json.JSONDecodeError:
                             continue
         except Exception as e:
             yield f"\n[LLM 调用失败: {e}]"
+        finally:
+            latency = _time.time() - _start
+            # 将 debug 信息附加到模块级变量，供 API 读取
+            _last_provider_debug = {
+                "provider": self._name,
+                "model": self._model,
+                "latency_seconds": round(latency, 2),
+                "input_tokens_est": _input_tokens,
+                "output_tokens_est": _output_tokens,
+            }
+            import builtins
+            builtins._provider_debug = _last_provider_debug
 
 
 def create_provider() -> Optional[LLMProvider]:

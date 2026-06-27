@@ -166,7 +166,9 @@ async def chat_stream(req: ChatRequest):
             data={"role": "assistant", "content": full_reply, "conversation_id": req.conversation_id},
         ))
 
-        # 6. 保存 Prompt Log（完整 prompt 链路）
+        # 6. 保存 Prompt Log（完整 prompt 链路 + Provider Debug）
+        import builtins
+        provider_debug = getattr(builtins, '_provider_debug', {})
         save_prompt_log(
             conversation_id=req.conversation_id,
             person_name=person,
@@ -175,6 +177,7 @@ async def chat_stream(req: ChatRequest):
             system_prompt=f"你是 Relationship OS...\n\n{context}",
             assistant_reply=full_reply,
             debug_info=memory_result.debug_info,
+            provider_debug=provider_debug,
         )
 
         yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
@@ -292,6 +295,7 @@ def save_prompt_log(
     system_prompt: str,
     assistant_reply: str,
     debug_info: dict,
+    provider_debug: dict = None,
 ):
     """保存完整的 Prompt 链路（用于 Debug 和回放）"""
     os.makedirs(os.path.dirname(_prompt_log_file), exist_ok=True)
@@ -304,6 +308,7 @@ def save_prompt_log(
         "system_prompt": system_prompt[:2000],  # 截断避免文件过大
         "assistant_reply": assistant_reply,
         "debug": debug_info,
+        "provider": provider_debug or {},
     }
     with open(_prompt_log_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
