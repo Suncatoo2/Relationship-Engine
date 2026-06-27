@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from .event_types import create_event, EventType
 from .event_log import EventLog
 from .memory_engine import MemoryEngine
+from .provider import create_provider
 
 
 # ---- 全局实例 ----
@@ -30,7 +31,10 @@ from .memory_engine import MemoryEngine
 _data_dir = os.getenv("DATA_DIR", "data")
 _event_log = EventLog(_data_dir)
 _memory_engine = MemoryEngine(event_log=_event_log)
+_llm_provider = create_provider()
 _prompt_log_file = os.path.join(_data_dir, "prompts.jsonl")
+
+print(f"Provider: {_llm_provider.name() if _llm_provider else '离线模式'}")
 
 app = FastAPI(title="Relationship Event OS")
 WEB_DIR = Path(__file__).parent / "web"
@@ -67,21 +71,33 @@ async def build_context(person_name: str, conversation_id: str) -> str:
 async def stream_llm_response(message: str, context: str, history: list[dict]) -> AsyncGenerator[str, None]:
     """流式调用 LLM。
 
-    Step 1: 离线模式，模拟流式输出
-    Step 3: 接入真实 LLM Provider
+    优先使用真实 LLM Provider（DeepSeek/GPT/Claude）。
+    没有配置时回退到离线模式。
     """
-    # TODO: Step 3 替换为真实 LLM
-    # provider = create_provider()
-    # system_prompt = build_system_prompt(context)
-    # messages = history + [{"role": "user", "content": message}]
-    # async for chunk in provider.stream_chat(system_prompt, messages):
-    #     yield chunk
+    if _llm_provider:
+        system_prompt = build_system_prompt(context)
+        messages = history + [{"role": "user", "content": message}]
+        async for chunk in _llm_provider.stream_chat(system_prompt, messages):
+            yield chunk
+    else:
+        reply = generate_offline_reply(message, history, context)
+        for char in reply:
+            yield char
+            await asyncio.sleep(0.02)
 
-    # 离线模式：模拟流式回复（现在能感知 Context）
-    reply = generate_offline_reply(message, history, context)
-    for char in reply:
-        yield char
-        await asyncio.sleep(0.02)
+
+def build_system_prompt(context: str) -> str:
+    """构建 system prompt，注入 Memory Context"""
+    base = (
+        "你是 Relationship OS — 一个能够和人一起经历时间的 AI。\n"
+        "你能记住用户的信息、关系、情绪和成长。\n"
+        "根据以下关系上下文回复用户。自然地回复，像一个懂人心的朋友。\n"
+        "不要提及你是 AI，不要说'根据上下文'。直接融入对话。\n"
+        "如果上下文为空，说明这是第一次见面，自然地开始对话。\n"
+    )
+    if context:
+        return f"{base}\n=== 关系记忆 ===\n{context}"
+    return base
 
 
 def generate_offline_reply(message: str, history: list[dict], context: str) -> str:

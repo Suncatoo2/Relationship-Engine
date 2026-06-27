@@ -1,9 +1,9 @@
 # Relationship Event OS — 开发存档
 
-**日期：** 2026-06-26
-**状态：** Step 1 完成，Step 2 待开始
+**日期：** 2026-06-27
+**状态：** v0.2-stable，Step 3 待开始
 **分支：** main
-**最新 Tag：** v3-rc1
+**最新 Tag：** v0.2-stable, v0.2-milestone
 
 ---
 
