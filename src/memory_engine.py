@@ -87,6 +87,9 @@ class MemoryEngine:
 
         selected_facts = self.selector.select(query, person_facts) if query else person_facts[:10]
 
+        # 把筛选后的事实注入 Context（冲突解决后只保留最新 per category）
+        selected_facts = self._resolve_conflicts(selected_facts)
+
         # Step 4: Memory Reasoner（v0.35: 返回空, v0.4: 实现推理）
         reason_result = self.reasoner.reason(query, selected_facts)
 
@@ -167,6 +170,16 @@ class MemoryEngine:
         lines.append(result.prompt_text[:500])
 
         return "\n".join(lines)
+
+    def _resolve_conflicts(self, facts: list) -> list:
+        """同 category 只保留最新的一条 active fact"""
+        best_by_cat: dict[str, tuple] = {}
+        for f in facts:
+            cat = f.category
+            ts = f.created_at
+            if cat not in best_by_cat or ts > best_by_cat[cat][1]:
+                best_by_cat[cat] = (f, ts)
+        return [v[0] for v in best_by_cat.values()]
 
     def _build_debug_info(self, snapshot: ContextSnapshot, events: list, person_name: str) -> dict:
         """构建详细的 Debug 信息"""

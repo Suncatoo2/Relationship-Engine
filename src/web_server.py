@@ -148,7 +148,6 @@ async def chat_stream(req: ChatRequest):
     # 1b. 自动提取事实（过滤问句）
     if not req.message.strip().endswith(("？", "?")):
         _auto_extract_facts(req.message, person)
-    _auto_extract_facts(req.message, person)
 
     # 2. 获取历史消息
     history = get_conversation_history(req.conversation_id, limit=20)
@@ -280,6 +279,28 @@ async def debug_prompts(limit: int = 10):
     return entries
 
 
+@app.get("/api/debug/explain")
+async def debug_explain(person: str, query: str = ""):
+    """解释 AI 为什么这样回答——展示使用了哪些记忆"""
+    events = list(_event_log.iter_events())
+    facts = [e for e in events if e.type == "fact" and e.person == person]
+    from .memory_selector import MemorySelector, FactItem
+    selector = MemorySelector()
+    fact_items = [FactItem(
+        content=e.data.get("content", ""), category=e.data.get("category", "general"),
+        importance=e.data.get("importance", 5), importance_reason="",
+        source=e.data.get("source", ""), confidence=e.data.get("confidence", 0.5),
+        created_at=e.timestamp, times_confirmed=e.data.get("times_confirmed", 1),
+        status=e.data.get("status", "active"),
+    ) for e in facts]
+    selected = selector.select(query, fact_items) if query else fact_items[:10]
+    return {
+        "query": query, "total_facts": len(facts), "selected_facts": len(selected),
+        "facts_used": [{"content": f.content, "category": f.category, "confidence": f.confidence, "status": f.status} for f in selected],
+        "by_status": {"active": len([f for f in fact_items if f.status == "active"]), "deprecated": len([f for f in fact_items if f.status == "deprecated"])},
+    }
+
+
 # ---- 辅助函数 ----
 
 def get_conversation_history(conversation_id: str, limit: int = 20) -> list[dict]:
@@ -293,33 +314,41 @@ def get_conversation_history(conversation_id: str, limit: int = 20) -> list[dict
 
 
 def _auto_extract_facts(message: str, person: str):
-    """自动提取事实：当用户明确声明个人信息时，保存为 fact 事件
-
-    过滤问句，只提取陈述。
-    """
-    import re
+    """自动提取事实 + 冲突检测 + Provenance"""
+    import re, uuid
     msg = message.strip()
+    now_ts = datetime.now(timezone.utc).isoformat()
 
-    # 跳过问句和疑问词
-    if msg.endswith("？") or msg.endswith("?"):
+    if msg.endswith(("？", "?")):
         return
     if any(msg.startswith(q) for q in ("什么", "怎么", "为什么", "谁", "哪", "请问")):
         return
 
-    # 模式1: "记住：XXX"
+    def _save_fact(content, category, source, confidence):
+        # 检测同 category 冲突 → deprecate 旧值
+        all_events = list(_event_log.iter_events())
+        for old in all_events:
+            if old.type == "fact" and old.person == person and old.data.get("category") == category and old.data.get("status") == "active":
+                old.data["status"] = "deprecated"
+
+        mid = str(uuid.uuid4())[:8]
+        _event_log.append(create_event(
+            type=EventType.FACT, person=person,
+            data={
+                "content": content, "category": category, "importance": 8,
+                "source": source, "confidence": confidence, "times_confirmed": 1,
+                "last_confirmed": now_ts[:10], "status": "active",
+                "memory_id": mid,
+                "provenance": {"extracted_by": "_auto_extract_facts", "extracted_at": now_ts},
+            },
+        ))
+
     if msg.startswith("记住：") or msg.startswith("记住:"):
         content = msg[3:].strip()
         if content:
-            _event_log.append(create_event(
-                type=EventType.FACT, person=person,
-                data={"content": content, "category": "general", "importance": 8,
-                      "source": "user_direct", "confidence": 0.95, "times_confirmed": 1,
-                      "last_confirmed": datetime.now(timezone.utc).isoformat()[:10],
-                      "status": "active"},
-            ))
-            return
+            _save_fact(content, "general", "user_direct", 0.95)
+        return
 
-    # 模式2: 陈述句
     patterns = [
         (r'^我是(.+)', 'general'),
         (r'^我(?:最)?喜欢(.+)', 'preference'),
@@ -331,41 +360,8 @@ def _auto_extract_facts(message: str, person: str):
         m = re.match(pat, msg)
         if m:
             captured = m.group(1).strip().rstrip('。.!！？?')
-            # 再次检查：捕获的内容不应是疑问词
             if captured and len(captured) > 1 and not any(q in captured for q in ('什么', '怎么', '为什么', '谁', '哪')):
-                _event_log.append(create_event(
-                    type=EventType.FACT, person=person,
-                    data={
-                        "content": msg,
-                        "category": cat,
-                        "importance": 8,
-                        "source": "user_direct",
-                        "confidence": 0.95,
-                        "times_confirmed": 1,
-                        "last_confirmed": datetime.now(timezone.utc).isoformat()[:10],
-                        "status": "active",
-                    },
-                ))
-            return
-
-    # 模式2: "我是..." "我喜欢..." "我生日是..." "我养了..."
-    patterns = [
-        (r'^我是(.+)', 'general'),
-        (r'^我(?:最)?喜欢(.+)', 'preference'),
-        (r'^我(?:的)?生日是(.+)', 'birthday'),
-        (r'^我养了(.+)', 'general'),
-        (r'^我(?:是|学)(.+)专业', 'general'),
-    ]
-    for pat, cat in patterns:
-        m = re.match(pat, msg)
-        if m:
-            content = m.group(1).strip().rstrip('。.!！')
-            if content:
-                _event_log.append(create_event(
-                    type=EventType.FACT, person=person,
-                    data={"content": msg, "category": cat, "importance": 8,
-                          "source": "user_direct", "confidence": 0.95, "times_confirmed": 1},
-                ))
+                _save_fact(msg, cat, "user_direct", 0.95)
             return
 
 
