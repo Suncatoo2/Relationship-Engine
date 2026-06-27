@@ -1,23 +1,38 @@
-# Milestone — v0.2 Stable
+# Milestone — v0.3 Stable
 
 **日期：** 2026-06-27
-**版本：** v0.2-stable
-**状态：** ✅ 完成
+**版本：** v0.3-stable
+**状态：** ✅ RC Approved
 
 ---
 
-## 当前完成
+## v0.3 能力总结
 
-| 组件 | 说明 |
+| 能力 | 说明 |
 |------|------|
-| Event Log | append-only JSONL，唯一数据源 |
-| Memory Engine | 独立模块，自动读取记忆 → Context Composer → Prompt Builder |
-| Context Builder | ContextSnapshot（结构化）→ Prompt 文本 |
-| Prompt Log | 每次 LLM 调用的完整链路保存 |
-| Debug API | /api/debug/context + /api/debug/prompts |
-| Debug Panel | 前端 🧠 Memory 按钮，显示 Context |
-| Web Server | SSE 流式输出 + 会话管理 + 消息自动保存 |
-| Chat UI | ChatGPT 风格深色主题 + Markdown 渲染 + 流式显示 |
+| ChatGPT 风格聊天 | SSE 流式 + Markdown + 代码高亮 |
+| Provider Layer | DeepSeek / Claude / GPT / Gemini（模型无关） |
+| Memory Selector | 关键词匹配选择相关记忆 |
+| Fact Auto-Extraction | 自动识别用户声明，保存为结构化事实 |
+| Conflict Resolution | 同 category 最新值覆盖旧值 |
+| Explain API | 查看 AI 使用了哪些记忆 |
+| Prompt Log | 完整 prompt 链路保存 |
+| Provider Debug | Token/延迟/模型信息 |
+| Memory Invariants | 10 条不变量 |
+| Memory 状态机 | EXTRACTED → VALIDATED → ACTIVE → CONFLICT → STALE → DEPRECATED → ARCHIVED |
+| Memory 生命周期文档 | 完整数据流 + Future Problems |
+| RC Review | 代码审计 ✅ + 功能验收 ✅ + 压力测试 30 轮 ✅ |
+
+---
+
+## 下一阶段路线
+
+```
+Step 3.9 → Memory Test Suite（20~30 自动化场景）
+Step 4   → Memory 分层（Facts / Preferences / Personality / Emotion）
+v0.4     → Memory Reasoner（AI 判断记忆类别）
+v0.5     → 语义搜索 + Dynamic Importance + Persona Lab
+```
 
 ---
 
