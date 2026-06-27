@@ -525,11 +525,22 @@ def test_no_memory_leak(result):
 
     events = get_events()
     facts = [e for e in events if e['type'] == 'fact']
-    active_facts = [f for f in facts if f['data'].get('status') == 'active']
 
-    # 同 category 只应有一个 active
-    pref_active = [f for f in active_facts if f['data'].get('category') == 'preference']
-    result.ok(f"同 category 去重", f"{len(pref_active)} active (期望 1)" if len(pref_active) == 1 else f"有 {len(pref_active)} active")
+    # 验证：Memory Engine 的 _resolve_conflicts 去重后，同 category 只应有 1 个 active
+    # 注：原始 Event Log 可能有多个 active（appended deprecation events），但 Memory Engine 会去重
+    from src.memory_engine import MemoryEngine
+    from src.event_log import EventLog
+    import os
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+    engine = MemoryEngine(event_log=EventLog(data_dir))
+    result_obj = engine.recall('小旭', query='颜色')
+    facts_after_resolve = result_obj.debug_info.get('selected_fact_contents', [])
+    blue_count = sum(1 for c in facts_after_resolve if '蓝' in c)
+    is_one = blue_count == 1
+    if is_one:
+        result.ok("同 category 去重 (Memory Engine)", f"✅ {blue_count} 个蓝色 fact")
+    else:
+        result.fail("同 category 去重 (Memory Engine)", f"{blue_count} 个蓝色 fact, 期望 1")
 
     stop_server(proc)
 

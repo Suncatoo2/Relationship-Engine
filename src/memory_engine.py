@@ -22,8 +22,9 @@ from dataclasses import dataclass, field
 from .event_log import EventLog
 from .projections.context import ContextComposer, ContextSnapshot
 from .projections.prompt_builder import get_builder
-from .memory_selector import MemorySelector, extract_facts, FactItem
+from .memory_selector import MemorySelector
 from .memory_reasoner import MemoryReasoner
+from .projections.fact_state import FactProjection
 
 
 @dataclass
@@ -54,65 +55,53 @@ class MemoryEngine:
         self.composer = composer or ContextComposer()
         self.builder = get_builder(builder_name)
         self.selector = MemorySelector()
-        self.reasoner = MemoryReasoner()  # v0.35: 接口预留, v0.4: 实现推理
+        self.reasoner = MemoryReasoner()
+        self.fact_proj = FactProjection()
 
     def recall(self, person_name: str, query: str = "", conversation_id: str = "") -> MemoryResult:
-        """回忆：为某个人构建完整的记忆上下文
-
-        输入：人名 + 当前问题
-        输出：ContextSnapshot + Prompt 文本 + Debug 信息
-        """
+        """回忆：为某个人构建完整的记忆上下文"""
         # 1. 读取所有事件
         events = list(self.event_log.iter_events())
 
-        # 2. 提取事实 + Memory Selector 筛选
-        all_facts = extract_facts(events)
-        person_facts = [f for f in all_facts if any(
-            e.person == person_name and e.type == "fact"
-            for e in events if hasattr(e, 'id') and e.id == f.created_at
-        ) or True]  # 简化：把所有 fact 都算上，后续按 person 过滤
-        # 按 person 过滤
-        person_events = [e for e in events if e.person == person_name]
-        person_fact_events = [e for e in person_events if e.type == "fact"]
-        person_facts = [FactItem(
-            content=e.data.get("content", ""),
-            category=e.data.get("category", "general"),
-            importance=e.data.get("importance", 5),
-            importance_reason="",
-            source="user_direct",
-            confidence=0.9,
-            created_at=e.timestamp,
-            times_confirmed=1,
-        ) for e in person_fact_events]
+        # 2. 使用 FactProjection 获取事实状态
+        fact_state = self.fact_proj.project(events, person=person_name)
 
-        selected_facts = self.selector.select(query, person_facts) if query else person_facts[:10]
+        # 3. 获取所有 active fact → 交给 Selector 筛选
+        active_facts = list(fact_state.active.values())
+        selected_facts = self.selector.select(query, active_facts) if query else active_facts[:10]
 
-        # 把筛选后的事实注入 Context（冲突解决后只保留最新 per category）
-        selected_facts = self._resolve_conflicts(selected_facts)
+        # 4. 渐进式重构断言：FactProjection 已保证同 category 唯一 active
+        # 验证没有同 category 重复（未来稳定后可删除此断言）
+        categories_seen = set()
+        for f in selected_facts:
+            if f.category in categories_seen:
+                raise AssertionError(
+                    f"FactProjection 一致性错误: 同 category '{f.category}' 出现多个 active"
+                )
+            categories_seen.add(f.category)
 
-        # Step 4: Memory Reasoner（v0.35: 返回空, v0.4: 实现推理）
+        # 5. Reasoner（v0.4 实现）
         reason_result = self.reasoner.reason(query, selected_facts)
 
-        # 3. 调用 Context Composer 生成 ContextSnapshot
+        # 6. Context Composer → Prompt Builder
         snapshot = self.composer.compose(events, person_name)
-
-        # 4. 调用 Prompt Builder 生成文本
         prompt_text = self.builder.build(snapshot)
 
-        # 5. 把筛选后的事实注入 Context
+        # 7. 把筛选后的事实注入 Context
         if selected_facts:
             facts_text = "🧠 关于这个人的记忆：\n"
             for f in selected_facts:
                 facts_text += f"  [{f.category}] {f.content}\n"
             prompt_text = facts_text + "\n" + prompt_text
 
-        # 6. 构建 Debug 信息
+        # 8. Debug
         debug_info = self._build_debug_info(snapshot, events, person_name)
-        debug_info["total_facts"] = len(person_facts)
+        debug_info["total_facts"] = fact_state.total
+        debug_info["active_facts"] = fact_state.active_count
         debug_info["selected_facts"] = len(selected_facts)
         debug_info["selected_fact_contents"] = [f.content for f in selected_facts]
 
-        # 5. 元数据
+        # 9. Metadata
         metadata = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "person_name": person_name,
@@ -170,16 +159,6 @@ class MemoryEngine:
         lines.append(result.prompt_text[:500])
 
         return "\n".join(lines)
-
-    def _resolve_conflicts(self, facts: list) -> list:
-        """同 category 只保留最新的一条 active fact"""
-        best_by_cat: dict[str, tuple] = {}
-        for f in facts:
-            cat = f.category
-            ts = f.created_at
-            if cat not in best_by_cat or ts > best_by_cat[cat][1]:
-                best_by_cat[cat] = (f, ts)
-        return [v[0] for v in best_by_cat.values()]
 
     def _build_debug_info(self, snapshot: ContextSnapshot, events: list, person_name: str) -> dict:
         """构建详细的 Debug 信息"""
