@@ -145,7 +145,9 @@ async def chat_stream(req: ChatRequest):
     )
     _event_log.append(user_event)
 
-    # 1b. 自动提取事实（用户明确声明个人信息时保存为 fact）
+    # 1b. 自动提取事实（过滤问句）
+    if not req.message.strip().endswith(("？", "?")):
+        _auto_extract_facts(req.message, person)
     _auto_extract_facts(req.message, person)
 
     # 2. 获取历史消息
@@ -293,12 +295,16 @@ def get_conversation_history(conversation_id: str, limit: int = 20) -> list[dict
 def _auto_extract_facts(message: str, person: str):
     """自动提取事实：当用户明确声明个人信息时，保存为 fact 事件
 
-    检测模式：
-    - "记住：XXX" → 直接保存
-    - "我叫XXX" "我是XXX" "我喜欢XXX" → 保存
+    过滤问句，只提取陈述。
     """
     import re
     msg = message.strip()
+
+    # 跳过问句和疑问词
+    if msg.endswith("？") or msg.endswith("?"):
+        return
+    if any(msg.startswith(q) for q in ("什么", "怎么", "为什么", "谁", "哪", "请问")):
+        return
 
     # 模式1: "记住：XXX"
     if msg.startswith("记住：") or msg.startswith("记住:"):
@@ -307,8 +313,39 @@ def _auto_extract_facts(message: str, person: str):
             _event_log.append(create_event(
                 type=EventType.FACT, person=person,
                 data={"content": content, "category": "general", "importance": 8,
-                      "source": "user_direct", "confidence": 0.95, "times_confirmed": 1},
+                      "source": "user_direct", "confidence": 0.95, "times_confirmed": 1,
+                      "last_confirmed": datetime.now(timezone.utc).isoformat()[:10],
+                      "status": "active"},
             ))
+            return
+
+    # 模式2: 陈述句
+    patterns = [
+        (r'^我是(.+)', 'general'),
+        (r'^我(?:最)?喜欢(.+)', 'preference'),
+        (r'^我(?:的)?生日是(.+)', 'birthday'),
+        (r'^我养了(.+)', 'general'),
+        (r'^(.+)是我的最爱', 'preference'),
+    ]
+    for pat, cat in patterns:
+        m = re.match(pat, msg)
+        if m:
+            captured = m.group(1).strip().rstrip('。.!！？?')
+            # 再次检查：捕获的内容不应是疑问词
+            if captured and len(captured) > 1 and not any(q in captured for q in ('什么', '怎么', '为什么', '谁', '哪')):
+                _event_log.append(create_event(
+                    type=EventType.FACT, person=person,
+                    data={
+                        "content": msg,
+                        "category": cat,
+                        "importance": 8,
+                        "source": "user_direct",
+                        "confidence": 0.95,
+                        "times_confirmed": 1,
+                        "last_confirmed": datetime.now(timezone.utc).isoformat()[:10],
+                        "status": "active",
+                    },
+                ))
             return
 
     # 模式2: "我是..." "我喜欢..." "我生日是..." "我养了..."
