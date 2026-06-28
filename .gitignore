@@ -1,11 +1,19 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
-.env
 *.egg-info/
 dist/
 build/
 .venv/
 venv/
 .pytest_cache/
-data/events.jsonl
+
+# Environment
+.env
+
+# Runtime data — generated at runtime, never committed
+data/*.jsonl
+data/snapshots/
+logs/
+cache/
