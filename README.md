@@ -1,12 +1,18 @@
 # Relationship-Engine
 
-> **AI 不应该只是回答问题，它应该帮你经营所有关系。**
+> **Architecture Manifesto**
+>
+> Relationship OS is not a memory library — it is an AI interaction operating system.
+> The Engine owns facts and decisions; the LLM owns expression.
+> Every new capability must preserve this separation.
+> ContextObject is working memory, not cache. Storage is append-only, not mutable.
+> Memory should be demonstrated, never announced.
 
 > **Relationship Engine is an architecture, not a collection of features.**
 > **Every release introduces a new capability, not a new feature.**
 
 ```
-Architecture Version : v0.7 (Stable)
+Architecture Version : v0.8 (Stable)
 Implementation Version : v0.4 (In Progress)
 ```
 
