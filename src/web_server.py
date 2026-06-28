@@ -31,10 +31,25 @@ from .projections.time_context import TimeContextProjection
 from .projections.emotion import EmotionProjection
 from .projections.growth import GrowthProjection
 from .memory_engine import MemoryEngine
+from .prompt_adapter import get_adapter
 from .provider import create_provider
 
 
-# ---- 全局实例 ----
+# Snapshot 自动保存（每 write_ops 次写入后触发一次）
+_write_counter = 0
+SNAPSHOT_INTERVAL = 100  # 每 100 次写入自动保存一次快照
+
+
+def _maybe_save_snapshot():
+    """自动保存 Snapshot（写操作达到阈值时触发）"""
+    global _write_counter
+    _write_counter += 1
+    if _write_counter >= SNAPSHOT_INTERVAL:
+        try:
+            _pipeline.save_snapshots()
+        except Exception:
+            pass  # Snapshot 失败不影响主流程
+        _write_counter = 0
 
 # 路径约定: data/{user_id}/events.jsonl
 # user_id 由 API 层决定，Engine 不关心如何认证（Principle #9）
@@ -92,12 +107,12 @@ async def stream_llm_response(message: str, context: str, history: list[dict]) -
     没有配置时回退到离线模式。
     """
     if _llm_provider:
-        system_prompt = build_system_prompt(context)
+        system_prompt = context  # PromptAdapter 已生成完整 Prompt
         messages = history + [{"role": "user", "content": message}]
         async for chunk in _llm_provider.stream_chat(system_prompt, messages):
             yield chunk
     else:
-        reply = generate_offline_reply(message, history, context)
+        reply = context  # 离线模式直接用 PromptAdapter 输出
         for char in reply:
             yield char
             await asyncio.sleep(0.02)
@@ -164,6 +179,7 @@ async def chat_stream(req: ChatRequest):
         facts=extracted,
         conversation_id=req.conversation_id,
     ))
+    _maybe_save_snapshot()
 
     # 3. 获取历史消息
     history = get_conversation_history(req.conversation_id, limit=20)
@@ -186,6 +202,7 @@ async def chat_stream(req: ChatRequest):
             conversation_id=req.conversation_id,
             source="assistant",
         ))
+        _maybe_save_snapshot()
 
         # 6. 保存 Prompt Log（完整 prompt 链路 + Provider Debug）
         import builtins

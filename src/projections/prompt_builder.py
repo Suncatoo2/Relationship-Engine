@@ -1,4 +1,11 @@
-"""Prompt Builder — 把 ContextSnapshot 变成 LLM Prompt
+"""
+DEPRECATED since v0.6.0.
+Replacement: src/prompt_adapter.py
+Removal target: v0.7.0
+
+This module is kept for backward compatibility only.
+New code should use prompt_adapter.get_adapter("claude").build(ctx).
+"""
 
 不同 LLM 有不同的偏好格式：
   - Claude: XML 标签

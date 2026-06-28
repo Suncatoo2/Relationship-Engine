@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 from .interaction_pipeline import InteractionPipeline
 from .protocol import ContextObject
-from .projections.prompt_builder import get_builder
+from .prompt_adapter import get_adapter
 
 
 @dataclass
@@ -46,10 +46,10 @@ class MemoryEngine:
     def __init__(
         self,
         pipeline: InteractionPipeline,
-        builder_name: str = "default",
+        adapter_name: str = "default",
     ):
         self.pipeline = pipeline
-        self.builder = get_builder(builder_name)
+        self._adapter = get_adapter(adapter_name)
 
     def recall(self, person_name: str, query: str = "", conversation_id: str = "") -> MemoryResult:
         """回忆：为某个人构建完整的记忆上下文
@@ -61,14 +61,8 @@ class MemoryEngine:
         # 1. Pipeline.recall() — 唯一读出口
         ctx = self.pipeline.recall(person_name)
 
-        # 2. 构建 Prompt 文本
-        # Prompt Builder 需要 ContextSnapshot 格式，临时桥接
-        # TODO: Phase 3 — 直接用 ContextObject 构建 Prompt
-        prompt_text = f"关于 {person_name} 的记忆：\n"
-        if ctx.memory and ctx.memory.active_facts:
-            prompt_text += "🧠 活跃事实：\n"
-            for f in ctx.memory.active_facts:
-                prompt_text += f"  [{f.category}] {f.content}\n"
+        # 2. 用 PromptAdapter 生成 Prompt（不再硬编码拼接）
+        prompt_text = self._adapter.build(ctx)
 
         # 3. Debug 信息
         debug_info = {

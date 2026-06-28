@@ -1,10 +1,16 @@
-"""Context Composer — 组合所有 Projection 的输出
+"""
+DEPRECATED since v0.5.0.
+Replacement: src/context_composer.py
+Removal target: v0.7.0
 
-只能读取 Profile，不能读取 Event Log。
-职责：组合 + 预算控制 + 生成 ContextSnapshot。
+This module is kept for backward compatibility only.
+New code should use ContextComposer from context_composer.py.
+"""
 
-数据流：
-  Event Log → Projection → Profile → Context Composer → ContextSnapshot
+# DEPRECATED — kept for backward compatibility
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
 """
 
 from dataclasses import dataclass, field
