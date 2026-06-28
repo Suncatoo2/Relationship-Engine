@@ -5,6 +5,11 @@
 > **Relationship Engine is an architecture, not a collection of features.**
 > **Every release introduces a new capability, not a new feature.**
 
+```
+Architecture Version : v0.7 (Stable)
+Implementation Version : v0.4 (In Progress)
+```
+
 Relationship-Engine 是一个基于 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 的关系管理引擎，为大语言模型提供长期记忆、人物画像、关系追踪、事件记录、情绪摘要和智能提醒能力。
 
 与传统 AI 的「一次对话，一次遗忘」不同，Relationship-Engine 希望让 AI 能够真正理解人与人的关系，并随着时间不断成长。
@@ -219,38 +224,41 @@ Relationship-Engine/
 
 ## 版本
 
-本项目采用双轨制：
+本项目采用 Architecture–Implementation Dual Lifecycle Versioning（架构—实现双版本体系）。
 
-```
-Architecture Releases — 架构阶段（设计已完成，定义系统边界和能力）
-Implementation Releases — 实现版本（代码已完成，可运行）
+架构有自己的演进速度。实现有自己的开发速度。两者相互对应，但不要求同步完成。
 
-架构先于实现，设计先于编码。
-```
+### Architecture Milestones
 
-### Architecture Progress
+| 版本 | 设计内容 | 状态 |
+|------|---------|------|
+| v0.4 | Protocol & Pipeline Design — Pipeline + Dispatcher + Storage + ADR 1-6 | ✅ |
+| v0.5 | Projection Ecosystem Design — ContextComposer + MemoryReasoner + Golden | ✅ |
+| v0.6 | Output Layer Design — PromptAdapter + Lifecycle + Momentum + Suggestions | ✅ |
+| v0.7 | Performance Design — SnapshotManager + Incremental + Recovery | ✅ |
+| v1.0 | Relationship OS Design | 🎯 |
 
-| 版本 | 能力 | 状态 |
+### Implementation Status
+
+| 版本 | 内容 | 状态 |
 |------|------|------|
-| v0.4 | Infrastructure — Pipeline + Dispatcher + Storage + ADR 1-6 | ✅ |
-| v0.5 | Memory Core — ContextComposer + Reasoner + Golden Context | ✅ |
-| v0.6 | Output Layer — PromptAdapter + Lifecycle + Momentum | ✅ |
-| v0.7 | Performance — SnapshotManager + Incremental + Recovery | ✅ |
-| v1.0 | Relationship OS — 生产就绪 | 🎯 |
+| v0.1 | 聊天（SSE 流式 + Event Log + ChatGPT 风格 UI） | ✅ |
+| v0.2 | Memory Engine（自动读取记忆 + Prompt Log + Debug） | ✅ |
+| v0.3 | 8 Projections + MCP Server + Context Composer + Provider | ✅ |
+| v0.3.99 | Architecture Review（10 份设计文档 + 7 Principles + 5 ADR） | ✅ |
+| v0.4 | Infrastructure — Pipeline + Dispatcher + Storage + Event Schema | 🚧 In Progress |
+| v0.5 | Memory Core — Reasoner + Goals + Regression + ContextComposer | ⬜ |
+| v0.6 | Output Layer — PromptAdapter + Emotion Momentum + Lifecycle | ⬜ |
+| v0.7 | Performance — SnapshotManager + Incremental + Recovery | ⬜ |
+| v1.0 | Relationship OS MVP | 📋 |
 
-### Implementation Progress
+### 测试
 
-| 版本 | 内容 | 测试 | 状态 |
-|------|------|------|------|
-| v0.1 | 聊天（SSE 流式 + Event Log + ChatGPT 风格 UI） | — | ✅ |
-| v0.2 | Memory Engine（自动读取记忆 + Prompt Log + Debug） | — | ✅ |
-| v0.3 | 8 Projections + MCP Server + Context Composer | 249 | ✅ |
-| v0.3.99 | Architecture Review（5 ADR + 7 Principles） | — | ✅ |
-| v0.4 | Infrastructure（Pipeline + Dispatcher + Storage） | 344 | ✅ |
-| v0.5 | Memory Core（Reasoner + Golden + Goals + Regression） | 344 | ✅ |
-| v0.6 | Output Layer（PromptAdapter + Momentum + Lifecycle） | 344 | ✅ |
-| v0.7 | Performance（SnapshotManager） | 344 | ✅ |
-| v1.0 | Relationship OS MVP | — | 📋 |
+344 tests passed (Current Implementation). 覆盖 Infrastructure 到 Performance 的核心路径，不代表覆盖全部 Architecture 设计范围。
+
+### 架构文档
+
+10 Principles · 9 ADRs · Interaction Philosophy · Memory Retrieval Policy
 
 ---
 
