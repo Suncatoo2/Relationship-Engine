@@ -18,23 +18,23 @@ def make_growth_events():
         create_event(type=EventType.GROWTH, data={
             "title": "学习口腔医学", "category": "milestone",
             "description": "进入大学，开始学习口腔", "impact_level": 7, "date": "2024-09"
-        }, person="我自己", timestamp="2024-09-01T00:00:00+00:00"),
+        }, person="我自己", occurred_at="2024-09-01T00:00:00+00:00"),
         create_event(type=EventType.GROWTH, data={
             "title": "学会 Python", "category": "skill",
             "description": "从零开始学编程", "impact_level": 6, "date": "2025-06"
-        }, person="我自己", timestamp="2025-06-01T00:00:00+00:00"),
+        }, person="我自己", occurred_at="2025-06-01T00:00:00+00:00"),
         create_event(type=EventType.GROWTH, data={
             "title": "第一次完成自动化项目", "category": "achievement",
             "description": "用 Python 自动处理实验数据", "impact_level": 8, "date": "2025-09"
-        }, person="我自己", timestamp="2025-09-01T00:00:00+00:00"),
+        }, person="我自己", occurred_at="2025-09-01T00:00:00+00:00"),
         create_event(type=EventType.GROWTH, data={
             "title": "从遇到Bug就放弃到主动查文档", "category": "realization",
             "description": "开始理解调试是学习的一部分", "impact_level": 9, "date": "2025-12"
-        }, person="我自己", timestamp="2025-12-01T00:00:00+00:00"),
+        }, person="我自己", occurred_at="2025-12-01T00:00:00+00:00"),
         create_event(type=EventType.GROWTH, data={
             "title": "开发 Relationship Engine", "category": "achievement",
             "description": "从零开始设计架构", "impact_level": 10, "date": "2026-03"
-        }, person="我自己", timestamp="2026-03-01T00:00:00+00:00"),
+        }, person="我自己", occurred_at="2026-03-01T00:00:00+00:00"),
     ]
 
 

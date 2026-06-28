@@ -78,7 +78,7 @@ class EventLog:
         result = []
         for e in self.iter_events():
             try:
-                ts = datetime.fromisoformat(e.timestamp)
+                ts = datetime.fromisoformat(e.occurred_at)
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=timezone.utc)
                 if ts >= cutoff:

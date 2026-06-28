@@ -183,7 +183,7 @@ class EmotionProjection(Projection):
                 arousal=e.data.get("arousal", 0.5),
                 label=e.data.get("label", ""),
                 context=e.data.get("context", ""),
-                timestamp=e.timestamp,
+                timestamp=e.occurred_at,
             ))
 
         # 按时间排序
@@ -210,6 +210,9 @@ class EmotionProjection(Projection):
 
         # 报警
         p.alerts = self._compute_alerts(snapshots, now)
+
+        # 动量（指数时间衰减）
+        p.momentum = self._compute_momentum(snapshots, now)
 
         # metadata
         p.metadata = self._meta(len(events))
@@ -331,6 +334,60 @@ class EmotionProjection(Projection):
                     ))
 
         return alerts
+
+    def _compute_momentum(self, snapshots: list[EmotionSnapshot], now: datetime) -> dict | None:
+        """情绪动量：基于时间的指数衰减
+
+        Momentum = Previous × e^(-λΔt) + Current
+
+        Δt = 距离上一条 Interaction 的真实时间（天数）
+        λ = 衰减常数（默认 0.1，即 7 天衰减到 ~50%）
+
+        人的情绪不是按"消息数量"衰减，而是按"时间"衰减。
+        昨天很开心 + 今天突然难过 = 动量大（Δt 小）
+        两个月没聊天 + 今天突然难过 = 动量小（Δt 大）
+        """
+        import math
+
+        if len(snapshots) < 2:
+            return None
+
+        LAMBDA = 0.1  # 衰减常数：7天衰减到 ~50%
+
+        momentum = 0.0
+        prev_ts = None
+
+        for s in snapshots:
+            try:
+                ts = datetime.fromisoformat(s.timestamp)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                continue
+
+            if prev_ts is not None:
+                delta_days = (ts - prev_ts).total_seconds() / 86400.0
+                decay = math.exp(-LAMBDA * delta_days)
+                momentum = momentum * decay + s.valence
+            else:
+                momentum = s.valence
+
+            prev_ts = ts
+
+        # 计算从最后一条到现在的时间衰减
+        if prev_ts is not None:
+            days_since_last = (now - prev_ts).total_seconds() / 86400.0
+            decay_to_now = math.exp(-LAMBDA * days_since_last)
+            current_momentum = momentum * decay_to_now
+        else:
+            current_momentum = momentum
+
+        return {
+            "value": round(current_momentum, 3),
+            "lambda": LAMBDA,
+            "days_since_last": round(days_since_last, 1) if prev_ts else 0,
+            "data_points": len(snapshots),
+        }
 
     def _meta(self, event_count: int) -> dict:
         return {

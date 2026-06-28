@@ -224,8 +224,8 @@ class TimeContextProjection(Projection):
         person_events = [e for e in events if e.type == EventType.PERSON]
         milestone_events = [e for e in events if e.type == EventType.MILESTONE]
 
-        all_timestamps = [self.parse_ts(e.timestamp) for e in events if self.parse_ts(e.timestamp)]
-        chat_timestamps = [self.parse_ts(e.timestamp) for e in chat_events if self.parse_ts(e.timestamp)]
+        all_timestamps = [self.parse_ts(e.occurred_at) for e in events if self.parse_ts(e.occurred_at)]
+        chat_timestamps = [self.parse_ts(e.occurred_at) for e in chat_events if self.parse_ts(e.occurred_at)]
 
         # 相对时间
         if chat_timestamps:

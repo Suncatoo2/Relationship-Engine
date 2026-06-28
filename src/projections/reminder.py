@@ -181,7 +181,7 @@ class ReminderProjection(Projection):
 
             if e.type == EventType.MILESTONE:
                 # 纪念日提醒
-                ts = self.parse_ts(e.timestamp)
+                ts = self.parse_ts(e.occurred_at)
                 if ts:
                     days_since = (now - ts).days
                     for n in [100, 200, 365]:
@@ -231,8 +231,8 @@ class ReminderProjection(Projection):
         # 找最后一条 chat 事件
         chat_events = [e for e in events if e.type == EventType.CHAT]
         if chat_events:
-            latest = max(chat_events, key=lambda e: e.timestamp)
-            ts = self.parse_ts(latest.timestamp)
+            latest = max(chat_events, key=lambda e: e.occurred_at)
+            ts = self.parse_ts(latest.occurred_at)
             if ts:
                 days = (now - ts).days
                 if days >= 7:
@@ -256,7 +256,7 @@ class ReminderProjection(Projection):
             return items
 
         # 最近 5 条情绪
-        recent = sorted(emotion_events, key=lambda e: e.timestamp)[-5:]
+        recent = sorted(emotion_events, key=lambda e: e.occurred_at)[-5:]
         recent_vals = [e.data.get("valence", 0) for e in recent]
 
         if len(recent_vals) >= 3 and all(v < -0.3 for v in recent_vals[-3:]):
@@ -278,8 +278,8 @@ class ReminderProjection(Projection):
         if not growth_events:
             return items
 
-        latest = max(growth_events, key=lambda e: e.timestamp)
-        ts = self.parse_ts(latest.timestamp)
+        latest = max(growth_events, key=lambda e: e.occurred_at)
+        ts = self.parse_ts(latest.occurred_at)
         if ts:
             days = (now - ts).days
             if days >= 90:

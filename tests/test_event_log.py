@@ -35,8 +35,8 @@ class TestEventLogAppendAndRead:
         log.append(e2)
         events = log.read_all()
         assert len(events) == 2
-        assert events[0].id == e1.id
-        assert events[1].id == e2.id
+        assert events[0].event_id == e1.event_id
+        assert events[1].event_id == e2.event_id
 
     def test_read_all_empty_log(self, log):
         assert log.read_all() == []
@@ -46,9 +46,9 @@ class TestEventLogAppendAndRead:
         for i in range(10):
             e = create_event(type=EventType.CHAT, data={"i": i}, person="test")
             log.append(e)
-            ids.append(e.id)
+            ids.append(e.event_id)
         events = log.read_all()
-        assert [e.id for e in events] == ids
+        assert [e.event_id for e in events] == ids
 
     def test_append_is_persistent(self, tmp_path):
         log1 = EventLog(str(tmp_path))
@@ -59,7 +59,7 @@ class TestEventLogAppendAndRead:
         log2 = EventLog(str(tmp_path))
         events = log2.read_all()
         assert len(events) == 1
-        assert events[0].id == e.id
+        assert events[0].event_id == e.event_id
 
 
 class TestReadByType:
@@ -106,7 +106,7 @@ class TestReadRecent:
             type=EventType.FACT,
             data={"content": "old"},
             person="x",
-            timestamp="2020-01-01T00:00:00Z",
+            occurred_at="2020-01-01T00:00:00Z",
         )
         log.append(old)
         # 创建一个现在的事件
@@ -171,8 +171,8 @@ class TestIterators:
         assert list(log.iter_events()) == []
 
     def test_iter_events_same_as_read_all(self, populated_log):
-        iter_ids = [e.id for e in populated_log.iter_events()]
-        read_ids = [e.id for e in populated_log.read_all()]
+        iter_ids = [e.event_id for e in populated_log.iter_events()]
+        read_ids = [e.event_id for e in populated_log.read_all()]
         assert iter_ids == read_ids
 
     def test_iter_by_type(self, populated_log):

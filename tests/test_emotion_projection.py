@@ -19,15 +19,15 @@ def make_emotion_events(now=None):
     now = now or datetime.now(timezone.utc)
     return [
         create_event(type=EventType.EMOTION, data={"valence": 0.8, "arousal": 0.6, "label": "开心", "context": "收到礼物"},
-                     person="小雨", timestamp=(now - timedelta(days=10)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=10)).isoformat()),
         create_event(type=EventType.EMOTION, data={"valence": 0.5, "arousal": 0.4, "label": "平静", "context": "日常"},
-                     person="小雨", timestamp=(now - timedelta(days=7)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=7)).isoformat()),
         create_event(type=EventType.EMOTION, data={"valence": -0.3, "arousal": 0.7, "label": "焦虑", "context": "考试"},
-                     person="小雨", timestamp=(now - timedelta(days=4)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=4)).isoformat()),
         create_event(type=EventType.EMOTION, data={"valence": -0.6, "arousal": 0.8, "label": "焦虑", "context": "考砸了"},
-                     person="小雨", timestamp=(now - timedelta(days=2)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=2)).isoformat()),
         create_event(type=EventType.EMOTION, data={"valence": 0.2, "arousal": 0.3, "label": "平静", "context": "考完了"},
-                     person="小雨", timestamp=(now - timedelta(days=1)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=1)).isoformat()),
     ]
 
 
@@ -75,16 +75,16 @@ class TestTrend:
         events = [
             # 前14-7天：正面
             create_event(type=EventType.EMOTION, data={"valence": 0.8, "label": "开心"}, person="小雨",
-                         timestamp=(now - timedelta(days=14)).isoformat()),
+                         occurred_at=(now - timedelta(days=14)).isoformat()),
             create_event(type=EventType.EMOTION, data={"valence": 0.7, "label": "开心"}, person="小雨",
-                         timestamp=(now - timedelta(days=12)).isoformat()),
+                         occurred_at=(now - timedelta(days=12)).isoformat()),
             create_event(type=EventType.EMOTION, data={"valence": 0.6, "label": "开心"}, person="小雨",
-                         timestamp=(now - timedelta(days=10)).isoformat()),
+                         occurred_at=(now - timedelta(days=10)).isoformat()),
             # 最近7天：负面
             create_event(type=EventType.EMOTION, data={"valence": -0.5, "label": "焦虑"}, person="小雨",
-                         timestamp=(now - timedelta(days=3)).isoformat()),
+                         occurred_at=(now - timedelta(days=3)).isoformat()),
             create_event(type=EventType.EMOTION, data={"valence": -0.6, "label": "焦虑"}, person="小雨",
-                         timestamp=(now - timedelta(days=1)).isoformat()),
+                         occurred_at=(now - timedelta(days=1)).isoformat()),
         ]
         result = proj.project(events)
         assert result["小雨"].trend == EmotionTrend.DECLINING
@@ -94,16 +94,16 @@ class TestTrend:
         events = [
             # 前14-7天：负面（3个确保足够）
             create_event(type=EventType.EMOTION, data={"valence": -0.6, "label": "焦虑"}, person="小雨",
-                         timestamp=(now - timedelta(days=13)).isoformat()),
+                         occurred_at=(now - timedelta(days=13)).isoformat()),
             create_event(type=EventType.EMOTION, data={"valence": -0.5, "label": "焦虑"}, person="小雨",
-                         timestamp=(now - timedelta(days=11)).isoformat()),
+                         occurred_at=(now - timedelta(days=11)).isoformat()),
             create_event(type=EventType.EMOTION, data={"valence": -0.4, "label": "焦虑"}, person="小雨",
-                         timestamp=(now - timedelta(days=9)).isoformat()),
+                         occurred_at=(now - timedelta(days=9)).isoformat()),
             # 最近7天：正面
             create_event(type=EventType.EMOTION, data={"valence": 0.5, "label": "开心"}, person="小雨",
-                         timestamp=(now - timedelta(days=3)).isoformat()),
+                         occurred_at=(now - timedelta(days=3)).isoformat()),
             create_event(type=EventType.EMOTION, data={"valence": 0.6, "label": "开心"}, person="小雨",
-                         timestamp=(now - timedelta(days=1)).isoformat()),
+                         occurred_at=(now - timedelta(days=1)).isoformat()),
         ]
         result = proj.project(events)
         assert result["小雨"].trend == EmotionTrend.IMPROVING
@@ -132,7 +132,7 @@ class TestDominantEmotion:
             events.append(create_event(type=EventType.EMOTION,
                                         data={"valence": 0.5, "label": "开心"},
                                         person="小雨",
-                                        timestamp=(now - timedelta(days=i)).isoformat()))
+                                        occurred_at=(now - timedelta(days=i)).isoformat()))
         result = proj.project(events)
         assert result["小雨"].dominant_emotion == "开心"
 
@@ -145,7 +145,7 @@ class TestAlerts:
             events.append(create_event(type=EventType.EMOTION,
                                         data={"valence": -0.5, "label": "焦虑"},
                                         person="小雨",
-                                        timestamp=(now - timedelta(days=i)).isoformat()))
+                                        occurred_at=(now - timedelta(days=i)).isoformat()))
         result = proj.project(events)
         alerts = result["小雨"].alerts
         # 应该触发 5天 < -0.3 的规则
@@ -159,7 +159,7 @@ class TestAlerts:
             events.append(create_event(type=EventType.EMOTION,
                                         data={"valence": 0.5, "label": "开心"},
                                         person="小雨",
-                                        timestamp=(now - timedelta(days=i)).isoformat()))
+                                        occurred_at=(now - timedelta(days=i)).isoformat()))
         result = proj.project(events)
         assert len(result["小雨"].alerts) == 0
 
@@ -169,7 +169,7 @@ class TestAlerts:
         now = datetime.now(timezone.utc)
         events = [
             create_event(type=EventType.EMOTION, data={"valence": -0.9, "label": "绝望"},
-                         person="小雨", timestamp=now.isoformat()),
+                         person="小雨", occurred_at=now.isoformat()),
         ]
         result = proj.project(events)
         assert len(result["小雨"].alerts) == 1
@@ -203,10 +203,16 @@ class TestMetadata:
 
 
 class TestMomentumField:
-    def test_momentum_none_by_default(self, proj):
+    def test_momentum_calculated(self, proj):
+        """动量应被计算（指数时间衰减）"""
         events = make_emotion_events()
         result = proj.project(events)
-        assert result["小雨"].momentum is None
+        momentum = result["小雨"].momentum
+        assert momentum is not None
+        assert "value" in momentum
+        assert "lambda" in momentum
+        assert "days_since_last" in momentum
+        assert momentum["lambda"] == 0.1
 
 
 class TestDataclassOutput:

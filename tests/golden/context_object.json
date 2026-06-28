@@ -1,0 +1,58 @@
+{
+  "identity": {
+    "name": "小雨",
+    "nickname": "",
+    "tags": [],
+    "birthday": "",
+    "days_known": 0
+  },
+  "memory": {
+    "active_facts": [
+      {
+        "content": "喜欢蓝色",
+        "category": "preference",
+        "confidence": 0.9,
+        "importance": 8,
+        "source": "llm_extracted",
+        "status": "active"
+      },
+      {
+        "content": "口腔专业",
+        "category": "general",
+        "confidence": 0.9,
+        "importance": 6,
+        "source": "llm_extracted",
+        "status": "active"
+      }
+    ],
+    "fact_count": 2,
+    "memory_summary": "关于小雨：偏好：喜欢蓝色；基本信息：口腔专业；关系阶段：朋友（好感度 20，趋势 升温）；最近联系：今天刚聊过；最后聊天：今天；主导情绪：开心",
+    "top_topics": []
+  },
+  "relationship": {
+    "stage": "朋友",
+    "chemistry": 20,
+    "decay_chemistry": 30,
+    "trend": "升温",
+    "last_contact_summary": "今天刚聊过",
+    "milestones": []
+  },
+  "time": {
+    "last_chat_label": "今天",
+    "silence_label": "今天聊过",
+    "upcoming": [],
+    "days_known": 0
+  },
+  "system": {
+    "version": 1,
+    "generated_at": "2026-06-28T11:02:52.899954+00:00",
+    "event_count": 7,
+    "token_estimate": 0
+  },
+  "last_consumed_event_id": "b7000ed8-56a9-46e5-95a8-7b8859ffa6a5",
+  "emotion": {
+    "trend": "insufficient",
+    "dominant_emotion": "开心",
+    "alert": ""
+  }
+}

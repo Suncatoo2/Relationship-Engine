@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from ..event_types import Event
-from ..event_log import EventLog
 from .base import Projection
 from .person import PersonProjection, PersonProfile
 from .relationship import RelationshipProjection, RelationshipProfile
@@ -104,17 +103,14 @@ class ContextComposer:
         self.conversation_proj = ConversationProjection()
         self.reminder_proj = ReminderProjection()
 
-    def compose(self, events: list[Event] | EventLog, person_name: str) -> ContextSnapshot:
+    def compose(self, events: list[Event], person_name: str) -> ContextSnapshot:
         """组合所有 Projection 为 ContextSnapshot
 
         Args:
-            events: 事件列表或 EventLog 实例
+            events: 事件列表（由 Pipeline 或调用方传入，不含 EventLog）
             person_name: 要查询的人物名
         """
-        if isinstance(events, EventLog):
-            event_list = list(events.iter_events())
-        else:
-            event_list = list(events)
+        event_list = list(events)
 
         now = datetime.now(timezone.utc)
 
@@ -168,7 +164,7 @@ class ContextComposer:
             "budget_limit": self.budget_limit,
             "projection_versions": proj_versions,
             "event_count": len(event_list),
-            "last_event_time": event_list[-1].timestamp if event_list else "",
+            "last_event_time": event_list[-1].occurred_at if event_list else "",
         }
 
         return snapshot

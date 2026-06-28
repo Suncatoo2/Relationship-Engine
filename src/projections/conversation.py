@@ -122,17 +122,17 @@ class ConversationProjection(Projection):
         now = datetime.now(timezone.utc)
 
         # 按时间排序
-        sorted_events = sorted(events, key=lambda e: e.timestamp)
-        timestamps = [self.parse_ts(e.timestamp) for e in sorted_events]
+        sorted_events = sorted(events, key=lambda e: e.occurred_at)
+        timestamps = [self.parse_ts(e.occurred_at) for e in sorted_events]
         valid_ts = [ts for ts in timestamps if ts]
 
         # 来源追溯
-        p.derived_from = [e.id for e in sorted_events]
+        p.derived_from = [e.event_id for e in sorted_events]
 
         # 三层窗口
         p.recent = self._compute_window(sorted_events[-20:], valid_ts[-20:] if valid_ts else [])
         p.last_week = self._compute_window(
-            [e for e in sorted_events if self._is_within_days(e.timestamp, 7)],
+            [e for e in sorted_events if self._is_within_days(e.occurred_at, 7)],
             [ts for ts in valid_ts if (now - ts).days <= 7]
         )
         p.all_time = self._compute_window(sorted_events, valid_ts)

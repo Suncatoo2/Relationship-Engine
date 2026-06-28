@@ -17,30 +17,30 @@ def make_chat_events(now=None):
     now = now or datetime.now(timezone.utc)
     return [
         create_event(type=EventType.PERSON, data={}, person="小雨",
-                     timestamp=(now - timedelta(days=30)).isoformat()),
+                     occurred_at=(now - timedelta(days=30)).isoformat()),
         # 30天前聊天
         create_event(type=EventType.CHAT, data={"role": "user", "content": "你好", "topics": ["问候"]}, person="小雨",
-                     timestamp=(now - timedelta(days=30)).isoformat()),
+                     occurred_at=(now - timedelta(days=30)).isoformat()),
         create_event(type=EventType.CHAT, data={"role": "assistant", "content": "你好呀"}, person="小雨",
-                     timestamp=(now - timedelta(days=30, hours=-1)).isoformat()),
+                     occurred_at=(now - timedelta(days=30, hours=-1)).isoformat()),
         # 20天前聊 Python
         create_event(type=EventType.CHAT, data={"role": "user", "content": "学Python", "topics": ["Python", "编程"]}, person="小雨",
-                     timestamp=(now - timedelta(days=20)).isoformat()),
+                     occurred_at=(now - timedelta(days=20)).isoformat()),
         create_event(type=EventType.CHAT, data={"role": "assistant", "content": "推荐教程"}, person="小雨",
-                     timestamp=(now - timedelta(days=20, hours=-1)).isoformat()),
+                     occurred_at=(now - timedelta(days=20, hours=-1)).isoformat()),
         # 5天前聊 CAD
         create_event(type=EventType.CHAT, data={"role": "user", "content": "CAD好难", "topics": ["CAD", "口腔"]}, person="小雨",
-                     timestamp=(now - timedelta(days=5)).isoformat()),
+                     occurred_at=(now - timedelta(days=5)).isoformat()),
         create_event(type=EventType.CHAT, data={"role": "assistant", "content": "多练习"}, person="小雨",
-                     timestamp=(now - timedelta(days=5, hours=-1)).isoformat()),
+                     occurred_at=(now - timedelta(days=5, hours=-1)).isoformat()),
         # 1天前聊 AI
         create_event(type=EventType.CHAT, data={"role": "user", "content": "AI真有意思", "topics": ["AI", "编程"]}, person="小雨",
-                     timestamp=(now - timedelta(days=1)).isoformat()),
+                     occurred_at=(now - timedelta(days=1)).isoformat()),
         create_event(type=EventType.CHAT, data={"role": "assistant", "content": "是的"}, person="小雨",
-                     timestamp=(now - timedelta(days=1, hours=-1)).isoformat()),
+                     occurred_at=(now - timedelta(days=1, hours=-1)).isoformat()),
         # 老王
         create_event(type=EventType.CHAT, data={"role": "user", "content": "天气不错", "topics": ["天气"]}, person="老王",
-                     timestamp=(now - timedelta(days=3)).isoformat()),
+                     occurred_at=(now - timedelta(days=3)).isoformat()),
     ]
 
 
@@ -127,7 +127,7 @@ class TestDensity:
             events.append(create_event(type=EventType.CHAT,
                                         data={"role": "user", "content": f"msg{i}"},
                                         person="小雨",
-                                        timestamp=(now - timedelta(hours=i * 4)).isoformat()))
+                                        occurred_at=(now - timedelta(hours=i * 4)).isoformat()))
         result = proj.project(events)
         assert result["小雨"].conversation_density == "dense"
 
@@ -135,9 +135,9 @@ class TestDensity:
         now = datetime.now(timezone.utc)
         events = [
             create_event(type=EventType.CHAT, data={"role": "user", "content": "hi"}, person="小雨",
-                         timestamp=(now - timedelta(days=60)).isoformat()),
+                         occurred_at=(now - timedelta(days=60)).isoformat()),
             create_event(type=EventType.CHAT, data={"role": "user", "content": "hi"}, person="小雨",
-                         timestamp=(now - timedelta(days=30)).isoformat()),
+                         occurred_at=(now - timedelta(days=30)).isoformat()),
         ]
         result = proj.project(events)
         assert result["小雨"].conversation_density == "sparse"
@@ -163,7 +163,7 @@ class TestConfidence:
             events.append(create_event(type=EventType.CHAT,
                                         data={"role": "user", "content": f"msg{i}"},
                                         person="小雨",
-                                        timestamp=(now - timedelta(days=i)).isoformat()))
+                                        occurred_at=(now - timedelta(days=i)).isoformat()))
         result = proj.project(events)
         assert result["小雨"].confidence > 0.5
 

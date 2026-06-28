@@ -56,7 +56,7 @@ def extract_facts(events) -> list[FactItem]:
                 importance_reason=e.data.get("importance_reason", ""),
                 source=e.data.get("source", "user_direct"),
                 confidence=e.data.get("confidence", 0.9),
-                created_at=e.timestamp,
+                created_at=e.occurred_at,
                 times_confirmed=e.data.get("times_confirmed", 1),
             ))
     return facts

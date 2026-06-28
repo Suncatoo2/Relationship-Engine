@@ -2,9 +2,20 @@
 
 Projection = f(events) → view
 
-每个 Projection 从 Event Log 读取事件流，计算出一个结构化视图。
+每个 Projection 从事件流计算出一个结构化视图。
 Projection 不存储任何数据，每次被调用时从事件流重新计算。
 Event Log 变了，Projection 的输出自然变。
+
+ADR-002: Projection 必须 Stateless + Immutable。
+ADR-006: Projection 只消费传入的 Event，不主动读 Event Store。
+
+Phase 1 接口 (极简):
+  - project(events) → Profile
+  - apply(event)    — 处理单个新事件（实时增量）
+  - snapshot()      — 返回当前状态的序列化快照
+
+结束。不加 rollback / serialize / deserialize / beforeApply / afterApply / onReplay。
+以后需要再加。
 """
 
 from abc import ABC, abstractmethod
@@ -16,14 +27,37 @@ from ..event_types import Event
 class Projection(ABC):
     """所有 Projection 的抽象基类
 
-    子类只需实现 project() 方法：
-        def project(self, events) -> dict
+    子类必须实现:
+      - project(events) → dict
+
+    子类可以覆盖:
+      - apply(event)    — 处理单个新事件（默认不实现）
+      - snapshot()      — 返回当前状态快照（默认抛 NotImplementedError）
+      - info()          — 返回 Projection 元信息（默认自动推断）
     """
 
     @abstractmethod
     def project(self, events: list[Event]) -> dict:
         """输入事件流，输出结构化视图"""
         ...
+
+    def apply(self, event: Event):
+        """处理单个事件 — 实时增量更新内部状态"""
+        pass
+
+    def snapshot(self) -> dict:
+        """返回当前状态的序列化快照"""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement snapshot()"
+        )
+
+    def info(self) -> dict:
+        """返回 Projection 元信息（用于调试和注册验证）"""
+        return {
+            "name": self.__class__.__name__,
+            "has_apply": type(self).apply is not Projection.apply,
+            "has_snapshot": type(self).snapshot is not Projection.snapshot,
+        }
 
     def project_one(self, events: list[Event], name: str):
         """查询单个人的 Profile（默认实现）"""
@@ -62,7 +96,7 @@ class Projection(ABC):
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         result = []
         for e in events:
-            ts = Projection.parse_ts(e.timestamp)
+            ts = Projection.parse_ts(e.occurred_at)
             if ts is None:
                 result.append(e)
             elif ts >= cutoff:
@@ -73,7 +107,7 @@ class Projection(ABC):
     def sort_by_time(events: list[Event], desc: bool = True) -> list[Event]:
         """按时间排序"""
         def _ts(e):
-            return Projection.parse_ts(e.timestamp) or datetime.min.replace(tzinfo=timezone.utc)
+            return Projection.parse_ts(e.occurred_at) or datetime.min.replace(tzinfo=timezone.utc)
         return sorted(events, key=_ts, reverse=desc)
 
     @staticmethod
@@ -91,7 +125,7 @@ class Projection(ABC):
         if not events:
             return None
         def _ts(e):
-            return Projection.parse_ts(e.timestamp) or datetime.min.replace(tzinfo=timezone.utc)
+            return Projection.parse_ts(e.occurred_at) or datetime.min.replace(tzinfo=timezone.utc)
         return max(events, key=_ts)
 
     @staticmethod

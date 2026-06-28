@@ -81,11 +81,31 @@ class FactState:
 
 
 class FactProjection(Projection):
-    """事实状态投影 — 纯函数（Stateless + Immutable）
+    """事实状态投影
+
+    两种使用模式：
+      1. 批量（纯函数）：project(events) → FactState
+      2. 增量（Pipeline）：apply(event) 维护内部缓存，project() 从缓存返回
 
     每个 category 有且仅有一个 active fact。
-    所有结果从 events 计算，无内部状态。
     """
+
+    def __init__(self):
+        self._cache: list = []  # apply() 累积的 fact events
+
+    def apply(self, event):
+        """增量模式：接收单个 fact event，追加到内部缓存
+
+        由 Pipeline 通过 Dispatcher 调用。
+        只处理 type=="fact" 的事件。
+        """
+        if event.type == "fact":
+            self._cache.append(event)
+
+    def snapshot(self) -> dict:
+        """返回当前缓存状态的序列化快照"""
+        state = self.project(self._cache)
+        return state.to_dict()
 
     def project(self, events, person: str = "", since: str = None) -> FactState:
         """输入事件流，输出事实状态
@@ -104,7 +124,7 @@ class FactProjection(Projection):
             fact_events = [e for e in fact_events if e.person == person]
 
         # 按时间排序
-        fact_events.sort(key=lambda e: e.timestamp)
+        fact_events.sort(key=lambda e: e.occurred_at)
 
         # 构建 state：按 category 分组，最新 active 覆盖旧值
         all_facts: list[FactItem] = []
@@ -123,7 +143,7 @@ class FactProjection(Projection):
                 status=d.get("status", "active"),
                 memory_id=d.get("memory_id", ""),
                 times_confirmed=d.get("times_confirmed", 1),
-                created_at=e.timestamp,
+                created_at=e.occurred_at,
                 last_confirmed=d.get("last_confirmed", ""),
                 provenance=d.get("provenance", {}),
             )

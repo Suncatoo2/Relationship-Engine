@@ -20,17 +20,41 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
-from .event_types import create_event, EventType
-from .event_log import EventLog
+from .event_types import EventType
+from .storage import JSONLStorage
+from .dispatcher import ProjectionDispatcher
+from .interaction_pipeline import InteractionPipeline, Interaction, FactInput, EmotionInput
+from .projections.fact_state import FactProjection
+from .projections.person import PersonProjection
+from .projections.relationship import RelationshipProjection
+from .projections.time_context import TimeContextProjection
+from .projections.emotion import EmotionProjection
+from .projections.growth import GrowthProjection
 from .memory_engine import MemoryEngine
 from .provider import create_provider
 
 
 # ---- 全局实例 ----
 
-_data_dir = os.getenv("DATA_DIR", "data")
-_event_log = EventLog(_data_dir)
-_memory_engine = MemoryEngine(event_log=_event_log)
+# 路径约定: data/{user_id}/events.jsonl
+# user_id 由 API 层决定，Engine 不关心如何认证（Principle #9）
+_user_id = os.getenv("USER_ID", "local_default")
+_data_dir = os.path.join(os.getenv("DATA_DIR", "data"), _user_id)
+_storage = JSONLStorage(_data_dir)
+
+# Pipeline — 唯一写入口，唯一读出口
+# 注册 5 个 Projection（Pipeline 不知道有几个）
+_dispatcher = ProjectionDispatcher()
+_dispatcher.register(FactProjection(),          event_types=["fact"])
+_dispatcher.register(PersonProjection(),        event_types=["person", "fact"])
+_dispatcher.register(RelationshipProjection(),  event_types=["relation", "chat", "milestone", "person"])
+_dispatcher.register(TimeContextProjection(),   event_types=["chat", "person", "milestone"])
+_dispatcher.register(EmotionProjection(),       event_types=["emotion"])
+_dispatcher.register(GrowthProjection(),        event_types=["growth"])
+
+_pipeline = InteractionPipeline(storage=_storage, dispatcher=_dispatcher)
+
+_memory_engine = MemoryEngine(pipeline=_pipeline)
 _llm_provider = create_provider()
 _prompt_log_file = os.path.join(_data_dir, "prompts.jsonl")
 
@@ -130,37 +154,37 @@ async def chat_stream(req: ChatRequest):
     """SSE 流式聊天接口"""
     person = req.person_name or req.conversation_id
 
-    # 1. 保存用户消息
-    user_event = create_event(
-        type=EventType.CHAT,
+    # 1. 本地模式提取 facts（纯规则，不走 LLM）
+    extracted = _extract_local_facts(req.message)
+
+    # 2. 一次性 publish：chat + facts → Pipeline → Storage → Dispatcher
+    _pipeline.publish(Interaction(
+        message=req.message,
         person=person,
-        data={"role": "user", "content": req.message, "conversation_id": req.conversation_id},
-    )
-    _event_log.append(user_event)
+        facts=extracted,
+        conversation_id=req.conversation_id,
+    ))
 
-    # 1b. 自动提取事实（过滤问句）
-    if not req.message.strip().endswith(("？", "?")):
-        _auto_extract_facts(req.message, person)
-
-    # 2. 获取历史消息
+    # 3. 获取历史消息
     history = get_conversation_history(req.conversation_id, limit=20)
 
-    # 3. 构建 Context（通过 Memory Engine + Selector）
+    # 4. 构建 Context（通过 Memory Engine.recall → Pipeline）
     memory_result = _memory_engine.recall(person, query=req.message, conversation_id=req.conversation_id)
     context = memory_result.prompt_text
 
-    # 4. 流式生成回复
+    # 5. 流式生成回复
     async def generate():
         full_reply = ""
         async for chunk in stream_llm_response(req.message, context, history):
             full_reply += chunk
             yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
 
-        # 5. 保存 AI 回复
-        _event_log.append(create_event(
-            type=EventType.CHAT,
+        # 6. 保存 AI 回复（走 Pipeline，保持唯一写入口）
+        _pipeline.publish(Interaction(
+            message=full_reply,
             person=person,
-            data={"role": "assistant", "content": full_reply, "conversation_id": req.conversation_id},
+            conversation_id=req.conversation_id,
+            source="assistant",
         ))
 
         # 6. 保存 Prompt Log（完整 prompt 链路 + Provider Debug）
@@ -187,7 +211,7 @@ async def chat_stream(req: ChatRequest):
 @app.get("/api/conversations")
 async def list_conversations():
     """获取所有会话列表"""
-    events = list(_event_log.iter_events())
+    events = list(_storage.read_all())
     conv_map: dict[str, dict] = {}
 
     for e in events:
@@ -203,7 +227,7 @@ async def list_conversations():
                     "message_count": 0,
                 }
             conv_map[cid]["last_message"] = e.data.get("content", "")[:50]
-            conv_map[cid]["updated_at"] = e.timestamp
+            conv_map[cid]["updated_at"] = e.occurred_at
             conv_map[cid]["message_count"] += 1
 
     return sorted(conv_map.values(), key=lambda x: x["updated_at"], reverse=True)
@@ -226,7 +250,7 @@ async def get_messages(conversation_id: str, limit: int = 100):
 
 @app.get("/api/events")
 async def get_events(person: str = "", limit: int = 100):
-    events = list(_event_log.iter_events())
+    events = list(_storage.read_all())
     if person:
         events = [e for e in events if e.person == person]
     return [e.to_dict() for e in events[-limit:]]
@@ -236,7 +260,7 @@ async def get_events(person: str = "", limit: int = 100):
 
 @app.get("/api/stats")
 async def stats():
-    events = list(_event_log.iter_events())
+    events = list(_storage.read_all())
     persons = set()
     for e in events:
         if e.person:
@@ -275,7 +299,7 @@ async def debug_prompts(limit: int = 10):
 @app.get("/api/debug/explain")
 async def debug_explain(person: str, query: str = ""):
     """解释 AI 为什么这样回答——展示使用了哪些记忆"""
-    events = list(_event_log.iter_events())
+    events = list(_storage.read_all())
     facts = [e for e in events if e.type == "fact" and e.person == person]
     from .memory_selector import MemorySelector, FactItem
     selector = MemorySelector()
@@ -283,7 +307,7 @@ async def debug_explain(person: str, query: str = ""):
         content=e.data.get("content", ""), category=e.data.get("category", "general"),
         importance=e.data.get("importance", 5), importance_reason="",
         source=e.data.get("source", ""), confidence=e.data.get("confidence", 0.5),
-        created_at=e.timestamp, times_confirmed=e.data.get("times_confirmed", 1),
+        created_at=e.occurred_at, times_confirmed=e.data.get("times_confirmed", 1),
         status=e.data.get("status", "active"),
     ) for e in facts]
     selected = selector.select(query, fact_items) if query else fact_items[:10]
@@ -298,7 +322,7 @@ async def debug_explain(person: str, query: str = ""):
 
 def get_conversation_history(conversation_id: str, limit: int = 20) -> list[dict]:
     """获取会话历史消息"""
-    events = list(_event_log.iter_events())
+    events = list(_storage.read_all())
     messages = []
     for e in events:
         if e.type == EventType.CHAT and e.data.get("conversation_id") == conversation_id:
@@ -306,45 +330,35 @@ def get_conversation_history(conversation_id: str, limit: int = 20) -> list[dict
     return messages[-limit:]
 
 
-def _auto_extract_facts(message: str, person: str):
-    """自动提取事实 + 冲突检测 + Provenance"""
-    import re, uuid
+def _extract_local_facts(message: str) -> list[FactInput]:
+    """本地模式提取事实（纯规则，不走 LLM）
+
+    返回 FactInput 列表，由 Pipeline.publish() 负责写入 Event。
+    FactProjection.apply() 负责同 category 去重（deprecation）。
+    """
+    import re
     msg = message.strip()
-    now_ts = datetime.now(timezone.utc).isoformat()
 
     if msg.endswith(("？", "?")):
-        return
+        return []
     if any(msg.startswith(q) for q in ("什么", "怎么", "为什么", "谁", "哪", "请问")):
-        return
+        return []
 
-    def _save_fact(content, category, source, confidence):
-        # 检查同 category 已有 active fact → append deprecation event
-        all_events = list(_event_log.iter_events())
-        for old in all_events:
-            if old.type == "fact" and old.person == person and old.data.get("category") == category and old.data.get("status") == "active":
-                _event_log.append(create_event(
-                    type=EventType.FACT, person=person,
-                    data={**old.data, "status": "deprecated",
-                          "deprecated_at": now_ts[:10], "replaced_by_memory_id": str(uuid.uuid4())[:8]},
-                ))
+    facts: list[FactInput] = []
 
-        mid = str(uuid.uuid4())[:8]
-        _event_log.append(create_event(
-            type=EventType.FACT, person=person,
-            data={
-                "content": content, "category": category, "importance": 8,
-                "source": source, "confidence": confidence, "times_confirmed": 1,
-                "last_confirmed": now_ts[:10], "status": "active",
-                "memory_id": mid,
-                "provenance": {"extracted_by": "_auto_extract_facts", "extracted_at": now_ts},
-            },
+    def _save(content: str, category: str, source: str = "user_direct", confidence: float = 0.95):
+        facts.append(FactInput(
+            content=content,
+            category=category,
+            importance=8,
+            confidence=confidence,
         ))
 
     if msg.startswith("记住：") or msg.startswith("记住:"):
         content = msg[3:].strip()
         if content:
-            _save_fact(content, "general", "user_direct", 0.95)
-        return
+            _save(content, "general")
+        return facts
 
     patterns = [
         (r'^我是(.+)', 'general'),
@@ -358,8 +372,10 @@ def _auto_extract_facts(message: str, person: str):
         if m:
             captured = m.group(1).strip().rstrip('。.!！？?')
             if captured and len(captured) > 1 and not any(q in captured for q in ('什么', '怎么', '为什么', '谁', '哪')):
-                _save_fact(captured, cat, "user_direct", 0.95)
-            return
+                _save(captured, cat)
+            return facts
+
+    return facts
 
 
 def save_prompt_log(

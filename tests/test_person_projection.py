@@ -149,9 +149,9 @@ class TestReplayOrder:
         """first_met 应该保持第一个 person 事件的时间"""
         events = [
             create_event(type=EventType.PERSON, data={"action": "create"}, person="小雨",
-                         timestamp="2025-01-01T00:00:00+00:00"),
+                         occurred_at="2025-01-01T00:00:00+00:00"),
             create_event(type=EventType.PERSON, data={"nickname": "小鱼儿"}, person="小雨",
-                         timestamp="2025-06-01T00:00:00+00:00"),
+                         occurred_at="2025-06-01T00:00:00+00:00"),
         ]
         result = proj.project(events)
         assert result["小雨"].first_met == "2025-01-01T00:00:00+00:00"
@@ -192,19 +192,19 @@ class TestFullReplay:
             # 第一天：认识小雨
             create_event(type=EventType.PERSON,
                          data={"action": "create", "birthday": "1998-06-15", "tags": ["口腔同学"]},
-                         person="小雨", timestamp="2025-01-15T10:00:00+00:00"),
+                         person="小雨", occurred_at="2025-01-15T10:00:00+00:00"),
             # 第三天：记住她喜欢奶茶
             create_event(type=EventType.FACT,
                          data={"content": "喜欢喝抹茶拿铁", "category": "preference", "importance": 8},
-                         person="小雨", timestamp="2025-01-18T09:00:00+00:00"),
+                         person="小雨", occurred_at="2025-01-18T09:00:00+00:00"),
             # 第七天：更新昵称
             create_event(type=EventType.PERSON,
                          data={"nickname": "小鱼儿"},
-                         person="小雨", timestamp="2025-01-22T14:00:00+00:00"),
+                         person="小雨", occurred_at="2025-01-22T14:00:00+00:00"),
             # 第十天：又记住一件事
             create_event(type=EventType.FACT,
                          data={"content": "怕打雷", "category": "secret", "importance": 9},
-                         person="小雨", timestamp="2025-01-25T22:00:00+00:00"),
+                         person="小雨", occurred_at="2025-01-25T22:00:00+00:00"),
         ]
         result = proj.project(events)
         p = result["小雨"]

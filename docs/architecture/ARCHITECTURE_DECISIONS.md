@@ -140,3 +140,172 @@ Engine 对外只有一个高层入口：`publish_interaction(interaction)`。LLM
 
 - `publish_interaction()` 的 schema 需要持续演进
 - MCP Tools 保留为低层接口（给非 LLM 的外部系统调用）
+
+---
+
+## ADR-006: Event Schema 演进 + Pipeline 铁律
+
+**日期：** 2026-06-28
+**状态：** Accepted
+
+### 决策 A：Event 字段从 v1 起预留演进空间
+
+Event 字段固化如下：
+
+| 字段 | 生成者 | 说明 |
+|------|--------|------|
+| `event_id` | Storage（append 时） | 全局唯一 ID，业务代码不可伪造 |
+| `version` | 业务代码 | 固定为 1，未来 Schema 演进时递增 |
+| `occurred_at` | 业务代码 | 业务发生时间（用户说话的时刻） |
+| `recorded_at` | Storage（append 时） | 系统真正写入的时刻 |
+| `type` | 业务代码 | 事件类型 |
+| `person` | 业务代码 | 涉及人物 |
+| `data` | 业务代码 | 事件载荷 |
+| `source` | 业务代码 | 来源标识 |
+
+区分 `occurred_at` 和 `recorded_at` 的原因：
+- 用户 3 天前说了一句话，今天才录入系统 — 没有 `occurred_at`，时间线就错了
+- 未来可能支持离线消息导入、外部数据迁移
+- 审计/调试/Replay 依赖 `recorded_at` 定位写入顺序
+
+### 决策 B：Pipeline 铁律（ADR-006 第二部分）
+
+**只有 InteractionPipeline 可以访问 Event Store。**
+
+允许的调用链：
+```
+Pipeline → Storage.append(event)     # 唯一写入
+Pipeline → Storage.read() → events  # 唯一读取
+```
+
+禁止的调用链：
+```
+Projection → Storage.read()    ❌
+Projection → EventLog.iter()   ❌
+MemoryEngine → EventLog        ❌
+MCP Server → EventLog          ❌
+```
+
+原因：
+1. Projection 只消费 Event，不主动扫描历史 — 否则多个 Projection 各自读 Event Store，系统耦合
+2. 统一入口 = 统一缓存策略（Snapshot）、统一性能监控
+3. 将来换 Storage，只需改 Pipeline 一处
+
+### 备选方案
+
+- **每个 Projection 自己读 Event Store**：灵活，但 8 个 Projection × 各自查询 = N × M 种耦合
+
+### 后果
+
+- 所有 Event 必须经过 Pipeline 写入
+- `MemoryEngine` 的 `recall()` 职责迁移到 `Pipeline.recall()`
+- 中间件/日志/验证 全部在 Pipeline 层实现
+- **Pipeline 自身不超过 200 行** — 只做协调，不负责实现。实现代码下沉到 Dispatcher / Projection / Validator / ContextComposer 中
+
+---
+
+## ADR-007: Engine Detects, LLM Explains
+
+**日期：** 2026-06-28
+**状态：** Accepted
+
+### 决策
+
+Engine 负责**发现（Detect）**，LLM 负责**解释（Explain）**。
+
+Engine 发现的是确定性事实：
+- 30 天未联系
+- 情绪连续下降 5 天
+- 生日还有 2 天
+- Relationship Lifecycle 进入冷却阶段
+- 目标 3 个月没有提及
+
+LLM 解释的是人的表达：
+- "最近是不是有点累？"
+- "要不要联系一下 Bob？"
+- "Alice 快生日了，你准备送什么？"
+
+### 原因
+
+1. 发现是确定性的——`days_since_last_contact > 30` 是 100% 可重现的
+2. 解释是不确定性的——"要不要联系"需要理解上下文和语气
+3. Engine 做发现，100% 可测试；LLM 做解释，无法单元测试
+4. 换 LLM 时，发现逻辑不变；升级 Engine 时，解释风格不变
+
+### 备选方案
+
+- **Engine 做解释**：不可测试，换模型时风格丢失
+- **LLM 做发现**：浪费 token，不确定性引入确定性任务
+
+### 后果
+
+- `suggestions` 字段由 Engine 生成（确定性规则），不由 LLM 生成
+- `memory_summary` 由 Engine 生成（结构化摘要），Prompt 风格由 Adapter 生成
+- Engine 的每个 Detect 都必须是可断言的：`assert days > 30`
+- LLM 的每个 Explain 都是自由文本，不可断言
+
+---
+
+## ADR-008: Interaction Philosophy（交互哲学）
+
+**日期：** 2026-06-28
+**状态：** Accepted
+
+### 决策
+
+建立 Interaction Philosophy，定义 Relationship Engine 与用户交互的顶层原则。
+这些原则不依赖任何具体 LLM，是产品的"灵魂"。
+
+### 三层模型
+
+```
+Engine Detects → PromptAdapter Constrains → LLM Generates
+Engine 不推理 → PromptAdapter 不思考 → LLM 自由生成
+```
+
+### 核心原则
+
+1. **Memory should be demonstrated, never announced.**
+   记忆应该被展示，而不是被宣告。AI 不需要说"我记得你"，而是在对话中自然地接上历史上下文。
+
+2. **Memory should feel acknowledged, not announced.**
+   记忆应该被自然地确认，而不是被正式地宣告。"好，我会记着"，不是"已写入数据库"。
+
+3. **Show, don't tell.**
+   用行动证明记忆，不用嘴念叨。用户一年后回来说"我和小雨怎么样了"，AI 直接用事实回答，不煽情。
+
+4. **Suggestions are intents, not commands.**
+   建议是意图，不是指令。Engine 输出 `time_gap = 30d`，PromptAdapter 输出行为约束，LLM 决定怎么说。
+
+5. **Engine outputs facts, not derivations.**
+   Engine 只输出客观事实（`time_gap = 30d`），不输出推导（不用 `silence_alert = true`）。
+
+6. **PromptAdapter outputs constraints, not prose.**
+   PromptAdapter 输出可验证的行为规则（"Do not describe yourself as remembering"），不输出文学指导（不用 "without judgment"）。
+
+### PromptAdapter 行为约束示例
+
+```
+当 time_gap >= 7d:
+  - Allow one sentence acknowledging the time gap.
+  - Do not ask where the user has been.
+  - Do not express emotion about the absence.
+  - Do not announce that memory is preserved.
+  - Keep response brief. Let the user lead.
+
+当 time_gap >= 30d:
+  - Same as 7d, plus:
+  - Do not introduce historical topics proactively.
+  - Let factual continuity imply persistent memory.
+
+当 time_gap >= 180d:
+  - Same as 30d, plus:
+  - First response should be maximally brief.
+  - Give full initiative to the user.
+```
+
+### 后果
+
+- Interaction Philosophy 独立于任何 LLM，是产品的"灵魂"
+- 换 GPT/Claude/DeepSeek 时，这些原则不变
+- PromptAdapter 只维护 signal → constraint 映射表，不维护文案

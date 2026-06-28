@@ -103,32 +103,61 @@ class Event:
 
     所有数据都以 Event 形式存储。
     Memory、Relationship、Time、Emotion、Growth、Reminder 全是 Event 的 Projection。
+
+    Fields:
+        event_id:    全局唯一 ID，由 Storage/Pipeline 在 append 时生成
+        occurred_at: 业务发生时间（用户说话的真实时刻）
+        recorded_at: 系统写入时间（Storage append 的时刻）
+        version:     Schema 版本号（当前为 1，未来演进时递增）
+        type:        事件类型
+        data:        事件载荷
+        person:      涉及人物
+        source:      来源标识
     """
-    id: str
-    timestamp: str
+    event_id: str
+    occurred_at: str
     type: str
     data: dict
     person: str = ""
     source: str = "user_input"
+    version: int = 1
+    recorded_at: str = ""
 
     def to_dict(self) -> dict:
         """序列化为 dict（用于写入 JSONL）"""
-        d = asdict(self)
-        # 移除空的 person 字段
-        if not d.get("person"):
-            del d["person"]
+        d = {
+            "event_id": self.event_id,
+            "occurred_at": self.occurred_at,
+            "type": self.type,
+            "data": self.data,
+            "version": self.version,
+            "recorded_at": self.recorded_at,
+        }
+        if self.person:
+            d["person"] = self.person
+        if self.source:
+            d["source"] = self.source
         return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "Event":
-        """从 dict 反序列化（用于从 JSONL 读取）"""
+        """从 dict 反序列化（用于从 JSONL 读取）
+
+        兼容旧格式：
+          - 旧 key "id"        → event_id
+          - 旧 key "timestamp" → occurred_at
+          - 缺少 version       → 1
+          - 缺少 recorded_at   → occurred_at 的值
+        """
         return cls(
-            id=d["id"],
-            timestamp=d["timestamp"],
+            event_id=d.get("event_id", d.get("id", "")),
+            occurred_at=d.get("occurred_at", d.get("timestamp", "")),
             type=d["type"],
             data=d["data"],
             person=d.get("person", ""),
             source=d.get("source", "user_input"),
+            version=d.get("version", 1),
+            recorded_at=d.get("recorded_at", d.get("occurred_at", d.get("timestamp", ""))),
         )
 
 
@@ -137,17 +166,30 @@ def create_event(
     data: dict,
     person: str = "",
     source: str = "user_input",
-    timestamp: str | None = None,
+    occurred_at: str | None = None,
+    version: int = 1,
 ) -> Event:
     """创建 Event 的工厂函数
 
-    自动生成 UUID 和 timestamp（如果未提供）。
+    event_id 和 recorded_at 由 Storage/Pipeline 在 append 时生成。
+    业务代码只提供 occurred_at 和 version。
+
+    Args:
+        type:        事件类型
+        data:        事件载荷
+        person:      涉及人物
+        source:      来源标识
+        occurred_at: 业务发生时间（None 则使用当前 UTC 时间）
+        version:     Schema 版本号
     """
+    from datetime import datetime, timezone
     return Event(
-        id=str(uuid.uuid4()),
-        timestamp=timestamp or datetime.now(timezone.utc).isoformat(),
+        event_id="",                                          # Storage 生成
+        occurred_at=occurred_at or datetime.now(timezone.utc).isoformat(),
         type=type,
         data=data,
         person=person,
         source=source,
+        version=version,
+        recorded_at="",                                        # Storage 生成
     )

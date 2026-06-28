@@ -2,6 +2,9 @@
 
 > **AI 不应该只是回答问题，它应该帮你经营所有关系。**
 
+> **Relationship Engine is an architecture, not a collection of features.**
+> **Every release introduces a new capability, not a new feature.**
+
 Relationship-Engine 是一个基于 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 的关系管理引擎，为大语言模型提供长期记忆、人物画像、关系追踪、事件记录、情绪摘要和智能提醒能力。
 
 与传统 AI 的「一次对话，一次遗忘」不同，Relationship-Engine 希望让 AI 能够真正理解人与人的关系，并随着时间不断成长。

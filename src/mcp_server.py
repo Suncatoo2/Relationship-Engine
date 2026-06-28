@@ -4,22 +4,44 @@
 调用关系管理能力。
 
 Everything is Event. Everything else is Projection.
+
+Write: publish_interaction() → Pipeline
+Read:  get_context() → Pipeline.recall() → ContextObject JSON
 """
 
 import os
 import json
 from datetime import datetime, timezone, timedelta
 from mcp.server.fastmcp import FastMCP
-from .event_types import create_event, EventType
-from .event_log import EventLog
-from .projections.context import ContextComposer
-from .projections.prompt_builder import get_builder
+from .event_types import EventType
+from .storage import JSONLStorage
+from .dispatcher import ProjectionDispatcher
+from .interaction_pipeline import InteractionPipeline, Interaction, FactInput, EmotionInput, RelationInput
+from .projections.fact_state import FactProjection
+from .projections.person import PersonProjection
+from .projections.relationship import RelationshipProjection
+from .projections.time_context import TimeContextProjection
+from .projections.emotion import EmotionProjection
+from .projections.growth import GrowthProjection
 
 
-# ---- 全局实例 ----
+# ---- 全局实例（Pipeline 唯一入口）----
 
-_data_dir = os.getenv("DATA_DIR", "data")
-_event_log = EventLog(_data_dir)
+# 路径约定: data/{user_id}/events.jsonl
+# user_id 由调用方决定，Engine 不关心如何认证（Principle #9）
+_user_id = os.getenv("USER_ID", "local_default")
+_data_dir = os.path.join(os.getenv("DATA_DIR", "data"), _user_id)
+_storage = JSONLStorage(_data_dir)
+
+_dispatcher = ProjectionDispatcher()
+_dispatcher.register(FactProjection(),          event_types=["fact"])
+_dispatcher.register(PersonProjection(),        event_types=["person", "fact"])
+_dispatcher.register(RelationshipProjection(),  event_types=["relation", "chat", "milestone", "person"])
+_dispatcher.register(TimeContextProjection(),   event_types=["chat", "person", "milestone"])
+_dispatcher.register(EmotionProjection(),       event_types=["emotion"])
+_dispatcher.register(GrowthProjection(),        event_types=["growth"])
+
+_pipeline = InteractionPipeline(storage=_storage, dispatcher=_dispatcher)
 
 mcp = FastMCP("RelationshipEventOS")
 
@@ -45,13 +67,12 @@ async def add_person(
         tags: 标签列表（如 ["口腔同学", "室友"]）
         notes: 备注
     """
-    event = create_event(
-        type=EventType.PERSON,
+    _pipeline.publish(Interaction(
+        message=f"[添加人物] {name}",
         person=name,
-        data={"action": "create", "birthday": birthday, "nickname": nickname,
-              "tags": tags or [], "notes": notes},
-    )
-    _event_log.append(event)
+        type="person",
+        facts=[FactInput(content=f"生日:{birthday}", category="birthday")] if birthday else [],
+    ))
     return f"已添加人物: {name}"
 
 
@@ -70,12 +91,11 @@ async def remember(
         category: 分类（general/preference/birthday/hobby/story/important/secret）
         importance: 重要性 1-10
     """
-    event = create_event(
-        type=EventType.FACT,
+    _pipeline.publish(Interaction(
+        message=f"[记住] {content}",
         person=person_name,
-        data={"content": content, "category": category, "importance": importance},
-    )
-    _event_log.append(event)
+        facts=[FactInput(content=content, category=category, importance=importance)],
+    ))
     return f"已记住关于 {person_name} 的信息: {content}"
 
 
@@ -94,15 +114,11 @@ async def add_chat(
         content: 消息内容
         topics: 话题标签（如 ["Python", "编程"]），用于话题统计
     """
-    data = {"role": role, "content": content}
-    if topics:
-        data["topics"] = topics
-    event = create_event(
-        type=EventType.CHAT,
+    _pipeline.publish(Interaction(
+        message=content,
         person=person_name,
-        data=data,
-    )
-    _event_log.append(event)
+        source=role,
+    ))
     return f"已记录与 {person_name} 的对话"
 
 
@@ -123,12 +139,11 @@ async def add_emotion(
         arousal: 唤醒度 0（平静）到 1（激动）
         context: 触发场景
     """
-    event = create_event(
-        type=EventType.EMOTION,
+    _pipeline.publish(Interaction(
+        message=f"[情绪] {label}",
         person=person_name,
-        data={"valence": valence, "arousal": arousal, "label": label, "context": context},
-    )
-    _event_log.append(event)
+        emotion=EmotionInput(valence=valence, arousal=arousal, label=label, context=context),
+    ))
     return f"已记录 {person_name} 的情绪: {label}"
 
 
@@ -147,19 +162,11 @@ async def update_relation(
         chemistry_delta: 好感度变化（正数升温，负数降温）
         event_desc: 触发事件描述
     """
-    data = {}
-    if stage:
-        data["stage"] = stage
-    if chemistry_delta:
-        data["delta"] = chemistry_delta
-    if event_desc:
-        data["event"] = event_desc
-    event = create_event(
-        type=EventType.RELATION,
+    _pipeline.publish(Interaction(
+        message=f"[关系] {event_desc or stage}",
         person=person_name,
-        data=data,
-    )
-    _event_log.append(event)
+        relation_change=RelationInput(stage=stage, delta=chemistry_delta, event=event_desc),
+    ))
     return f"已更新 {person_name} 的关系"
 
 
@@ -178,12 +185,14 @@ async def add_milestone(
         description: 描述
         significance: 重要性 1-10
     """
+    from .event_types import create_event
     event = create_event(
         type=EventType.MILESTONE,
         person=person_name,
         data={"milestone_type": milestone_type, "description": description, "significance": significance},
     )
-    _event_log.append(event)
+    stored = _storage.append(event)
+    _dispatcher.dispatch(stored)
     return f"已记录里程碑: {description}"
 
 
@@ -206,18 +215,20 @@ async def add_growth(
         impact_level: 影响程度 1-10
         date: 日期（YYYY-MM 或 YYYY-MM-DD）
     """
+    from .event_types import create_event
     event = create_event(
         type=EventType.GROWTH,
         person=person_name,
         data={"title": title, "category": category, "description": description,
               "impact_level": impact_level, "date": date},
     )
-    _event_log.append(event)
+    stored = _storage.append(event)
+    _dispatcher.dispatch(stored)
     return f"已记录成长: {title}"
 
 
 # ============================================================
-#  Read Tools — 读取视图
+#  Read Tools — 统一读取（全部经过 Pipeline）
 # ============================================================
 
 @mcp.tool()
@@ -228,33 +239,28 @@ async def get_context(
 ) -> str:
     """获取某人的完整 AI 上下文（最核心的读取接口）。
 
-    综合所有 Projection，返回关于这个人 AI 最应该知道的一切。
+    统一读取入口：Pipeline.recall() → ContextObject JSON。
+    LLM 不再需要调用 get_person / get_events / get_reminders。
 
     Args:
         person_name: 人名
         max_tokens: token 预算上限
         prompt_style: 输出格式（default/gpt/claude/deepseek）
     """
-    composer = ContextComposer(budget_limit=max_tokens)
-    snapshot = composer.compose(_event_log, person_name)
-
-    builder = get_builder(prompt_style)
-    return builder.build(snapshot)
+    ctx = _pipeline.recall(person_name)
+    return ctx.to_json()
 
 
 @mcp.tool()
 async def get_person(name: str) -> str:
-    """获取某人的人物画像。
+    """获取某人的人物画像（兼容层，内部转发到 get_context）。
 
     Args:
         name: 人名
     """
-    from .projections.person import PersonProjection
-    proj = PersonProjection()
-    profile = proj.project_one(list(_event_log.iter_events()), name)
-    if not profile:
-        return f"未找到 {name}"
-    return json.dumps(profile.to_dict(), ensure_ascii=False, indent=2)
+    ctx = _pipeline.recall(name)
+    d = ctx.to_dict()
+    return json.dumps(d.get("identity", {}), ensure_ascii=False, indent=2)
 
 
 @mcp.tool()
@@ -263,25 +269,24 @@ async def get_events(
     days: int = 30,
     event_type: str = "",
 ) -> str:
-    """获取原始事件流。
+    """获取原始事件流（兼容层，内部读取 Storage）。
 
     Args:
         person_name: 人名（可选，为空则返回所有）
         days: 最近多少天
         event_type: 事件类型过滤（可选）
     """
-    events = list(_event_log.iter_events())
+    events = list(_storage.read_all())
     if person_name:
         events = [e for e in events if e.person == person_name]
     if event_type:
         events = [e for e in events if e.type == event_type]
-    # days 过滤
     if days > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         filtered = []
         for e in events:
             try:
-                ts = datetime.fromisoformat(e.timestamp)
+                ts = datetime.fromisoformat(e.occurred_at)
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=timezone.utc)
                 if ts >= cutoff:
@@ -289,50 +294,59 @@ async def get_events(
             except (ValueError, TypeError):
                 filtered.append(e)
         events = filtered
-    events = events[-100:]  # 最多返回100条
+    events = events[-100:]
     return json.dumps([e.to_dict() for e in events], ensure_ascii=False, indent=2)
 
 
 @mcp.tool()
-async def get_reminders() -> str:
-    """获取所有提醒。"""
-    from .projections.reminder import ReminderProjection
-    proj = ReminderProjection()
-    profile = proj.project(list(_event_log.iter_events()))
-    return json.dumps(profile.to_dict(), ensure_ascii=False, indent=2)
+async def get_reminders(person_name: str = "") -> str:
+    """获取提醒（兼容层，内部转发到 get_context）。
+
+    Args:
+        person_name: 人名（可选）
+    """
+    ctx = _pipeline.recall(person_name) if person_name else None
+    if ctx:
+        d = ctx.to_dict()
+        return json.dumps(d.get("time", {}), ensure_ascii=False, indent=2)
+    return "{}"
 
 
 @mcp.tool()
 async def search(keyword: str) -> str:
-    """在所有事件中搜索关键词。
+    """在所有事件中搜索关键词（兼容层，内部读取 Storage）。
 
     Args:
         keyword: 搜索关键词
     """
-    results = _event_log.search(keyword)
+    keyword_lower = keyword.lower()
+    results = []
+    for e in _storage.read_all():
+        if keyword_lower in json.dumps(e.data, ensure_ascii=False).lower():
+            results.append(e)
+        elif keyword_lower in e.person.lower():
+            results.append(e)
     return json.dumps([e.to_dict() for e in results[:20]], ensure_ascii=False, indent=2)
 
 
 # ============================================================
-#  Resources
+#  Resources（兼容层，内部读取 Storage）
 # ============================================================
 
 @mcp.resource("relationship://people")
 def list_people() -> str:
     """获取所有人物列表"""
-    from .projections.person import PersonProjection
-    proj = PersonProjection()
-    profiles = proj.project(list(_event_log.iter_events()))
-    return json.dumps(
-        {name: p.to_dict() for name, p in profiles.items()},
-        ensure_ascii=False, indent=2,
-    )
+    persons: dict[str, dict] = {}
+    for e in _storage.read_all():
+        if e.person and e.person not in persons:
+            persons[e.person] = {"name": e.person, "first_seen": e.occurred_at}
+    return json.dumps(persons, ensure_ascii=False, indent=2)
 
 
 @mcp.resource("relationship://stats")
 def get_stats() -> str:
     """获取系统统计摘要"""
-    events = list(_event_log.iter_events())
+    events = list(_storage.read_all())
     type_counts: dict[str, int] = {}
     persons: set[str] = set()
     for e in events:

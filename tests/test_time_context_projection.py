@@ -19,19 +19,19 @@ def make_events(now=None):
     return [
         # 30天前认识
         create_event(type=EventType.PERSON, data={"action": "create"}, person="小雨",
-                     timestamp=(now - timedelta(days=30)).isoformat()),
+                     occurred_at=(now - timedelta(days=30)).isoformat()),
         # 20天前聊天
         create_event(type=EventType.CHAT, data={"content": "你好"}, person="小雨",
-                     timestamp=(now - timedelta(days=20)).isoformat()),
+                     occurred_at=(now - timedelta(days=20)).isoformat()),
         # 10天前聊天
         create_event(type=EventType.CHAT, data={"content": "在干嘛"}, person="小雨",
-                     timestamp=(now - timedelta(days=10)).isoformat()),
+                     occurred_at=(now - timedelta(days=10)).isoformat()),
         # 3天前聊天
         create_event(type=EventType.CHAT, data={"content": "吃饭了吗"}, person="小雨",
-                     timestamp=(now - timedelta(days=3)).isoformat()),
+                     occurred_at=(now - timedelta(days=3)).isoformat()),
         # 1天前聊天
         create_event(type=EventType.CHAT, data={"content": "晚安"}, person="小雨",
-                     timestamp=(now - timedelta(days=1)).isoformat()),
+                     occurred_at=(now - timedelta(days=1)).isoformat()),
     ]
 
 
@@ -71,15 +71,15 @@ class TestDensity:
             create_event(type=EventType.PERSON, data={}, person="小雨"),
             # 过去7天内5条聊天
             create_event(type=EventType.CHAT, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=1)).isoformat()),
+                         occurred_at=(now - timedelta(days=1)).isoformat()),
             create_event(type=EventType.CHAT, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=2)).isoformat()),
+                         occurred_at=(now - timedelta(days=2)).isoformat()),
             create_event(type=EventType.CHAT, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=3)).isoformat()),
+                         occurred_at=(now - timedelta(days=3)).isoformat()),
             create_event(type=EventType.CHAT, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=5)).isoformat()),
+                         occurred_at=(now - timedelta(days=5)).isoformat()),
             create_event(type=EventType.CHAT, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=6)).isoformat()),
+                         occurred_at=(now - timedelta(days=6)).isoformat()),
         ]
         result = proj.project(events)
         d7 = result["小雨"].density_7d
@@ -99,7 +99,7 @@ class TestDensity:
         events = [create_event(type=EventType.PERSON, data={}, person="x")]
         for i in range(30):
             events.append(create_event(type=EventType.CHAT, data={}, person="x",
-                                        timestamp=(now - timedelta(hours=i)).isoformat()))
+                                        occurred_at=(now - timedelta(hours=i)).isoformat()))
         result = proj.project(events)
         assert result["x"].density_7d.label == "很密集"
 
@@ -114,7 +114,7 @@ class TestPeriod:
         for i in range(5):
             ts = now.replace(hour=22, minute=0) - timedelta(days=i)
             events.append(create_event(type=EventType.CHAT, data={}, person="小雨",
-                                        timestamp=ts.isoformat()))
+                                        occurred_at=ts.isoformat()))
         result = proj.project(events)
         p = result["小雨"].period
         assert p is not None
@@ -128,7 +128,7 @@ class TestPeriod:
         for i in range(10):
             ts = now - timedelta(days=i * 2)
             events.append(create_event(type=EventType.CHAT, data={}, person="小雨",
-                                        timestamp=ts.isoformat()))
+                                        occurred_at=ts.isoformat()))
         result = proj.project(events)
         assert result["小雨"].period.dominant_day_type in ("weekday", "weekend")
 
@@ -145,9 +145,9 @@ class TestSilence:
         now = datetime.now(timezone.utc)
         events = [
             create_event(type=EventType.PERSON, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=100)).isoformat()),
+                         occurred_at=(now - timedelta(days=100)).isoformat()),
             create_event(type=EventType.CHAT, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=100)).isoformat()),
+                         occurred_at=(now - timedelta(days=100)).isoformat()),
         ]
         result = proj.project(events)
         s = result["小雨"].silence
@@ -169,7 +169,7 @@ class TestActiveWindow:
         now = datetime.now(timezone.utc)
         events = [
             create_event(type=EventType.PERSON, data={}, person="小雨",
-                         timestamp=now.isoformat()),
+                         occurred_at=now.isoformat()),
         ]
         result = proj.project(events)
         assert result["小雨"].active_window.total_days == 0
@@ -181,9 +181,9 @@ class TestLandmarks:
         # 认识在 335 天前（30天后就是一周年）
         events = [
             create_event(type=EventType.PERSON, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=335)).isoformat()),
+                         occurred_at=(now - timedelta(days=335)).isoformat()),
             create_event(type=EventType.CHAT, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=335)).isoformat()),
+                         occurred_at=(now - timedelta(days=335)).isoformat()),
         ]
         result = proj.project(events)
         landmarks = result["小雨"].landmarks
@@ -195,7 +195,7 @@ class TestLandmarks:
         now = datetime.now(timezone.utc)
         events = [
             create_event(type=EventType.PERSON, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=80)).isoformat()),
+                         occurred_at=(now - timedelta(days=80)).isoformat()),
         ]
         result = proj.project(events)
         landmarks = result["小雨"].landmarks
@@ -250,9 +250,9 @@ class TestTimeScale:
         now = datetime.now(timezone.utc)
         events = [
             create_event(type=EventType.PERSON, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=200)).isoformat()),
+                         occurred_at=(now - timedelta(days=200)).isoformat()),
             create_event(type=EventType.CHAT, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=200)).isoformat()),
+                         occurred_at=(now - timedelta(days=200)).isoformat()),
         ]
         result = proj.project(events)
         assert result["小雨"].time_scale == "很久很久以前"
@@ -269,9 +269,9 @@ class TestMemoryFreshness:
         now = datetime.now(timezone.utc)
         events = [
             create_event(type=EventType.PERSON, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=365)).isoformat()),
+                         occurred_at=(now - timedelta(days=365)).isoformat()),
             create_event(type=EventType.CHAT, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=365)).isoformat()),
+                         occurred_at=(now - timedelta(days=365)).isoformat()),
         ]
         result = proj.project(events)
         f = result["小雨"].memory_freshness

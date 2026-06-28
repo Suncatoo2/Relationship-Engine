@@ -4,14 +4,14 @@ Memory Engine 是 Relationship OS 的核心。
 它不是数据库，而是"记忆的整理者"。
 
 职责：
-  - 从 Event Log 读取原始事件
-  - 调用 Context Composer 生成 ContextSnapshot
+  - 通过 Pipeline.recall() 获取 ContextObject
+  - 从 ContextObject 构建 Prompt 文本
   - 提供 Debug 信息
   - 未来：记忆整合、遗忘机制、长期摘要
 
 不做的事：
-  - 不存储数据（Event Log 负责）
-  - 不决定发给 LLM 什么（Prompt Builder 负责）
+  - 不直接读 Event Log（Pipeline 负责）
+  - 不直接调用 Projection（Pipeline 负责）
   - 不做推理（调用方 AI 负责）
 """
 
@@ -19,18 +19,15 @@ import json
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 
-from .event_log import EventLog
-from .projections.context import ContextComposer, ContextSnapshot
+from .interaction_pipeline import InteractionPipeline
+from .protocol import ContextObject
 from .projections.prompt_builder import get_builder
-from .memory_selector import MemorySelector
-from .memory_reasoner import MemoryReasoner
-from .projections.fact_state import FactProjection
 
 
 @dataclass
 class MemoryResult:
     """Memory Engine 的输出"""
-    context_snapshot: ContextSnapshot
+    context: ContextObject
     prompt_text: str
     debug_info: dict
     metadata: dict = field(default_factory=dict)
@@ -39,79 +36,60 @@ class MemoryResult:
 class MemoryEngine:
     """关系记忆引擎
 
-    依赖接口，不依赖实现：
-      - EventLog 可替换
-      - ContextComposer 可替换
-      - PromptBuilder 可替换
+    通过 Pipeline.recall() 获取 ContextObject，不再直接读 Event Log。
+
+    使用示例:
+        engine = MemoryEngine(pipeline=pipeline)
+        result = engine.recall("小雨", query="喜欢什么")
     """
 
     def __init__(
         self,
-        event_log: EventLog | None = None,
-        composer: ContextComposer | None = None,
+        pipeline: InteractionPipeline,
         builder_name: str = "default",
     ):
-        self.event_log = event_log or EventLog("data")
-        self.composer = composer or ContextComposer()
+        self.pipeline = pipeline
         self.builder = get_builder(builder_name)
-        self.selector = MemorySelector()
-        self.reasoner = MemoryReasoner()
-        self.fact_proj = FactProjection()
 
     def recall(self, person_name: str, query: str = "", conversation_id: str = "") -> MemoryResult:
-        """回忆：为某个人构建完整的记忆上下文"""
-        # 1. 读取所有事件
-        events = list(self.event_log.iter_events())
+        """回忆：为某个人构建完整的记忆上下文
 
-        # 2. 使用 FactProjection 获取事实状态
-        fact_state = self.fact_proj.project(events, person=person_name)
+        1. pipeline.recall() 获取 ContextObject
+        2. 从 ContextObject 构建 Prompt 文本
+        3. 构建 Debug 信息
+        """
+        # 1. Pipeline.recall() — 唯一读出口
+        ctx = self.pipeline.recall(person_name)
 
-        # 3. 获取所有 active fact → 交给 Selector 筛选
-        active_facts = list(fact_state.active.values())
-        selected_facts = self.selector.select(query, active_facts) if query else active_facts[:10]
+        # 2. 构建 Prompt 文本
+        # Prompt Builder 需要 ContextSnapshot 格式，临时桥接
+        # TODO: Phase 3 — 直接用 ContextObject 构建 Prompt
+        prompt_text = f"关于 {person_name} 的记忆：\n"
+        if ctx.memory and ctx.memory.active_facts:
+            prompt_text += "🧠 活跃事实：\n"
+            for f in ctx.memory.active_facts:
+                prompt_text += f"  [{f.category}] {f.content}\n"
 
-        # 4. 渐进式重构断言：FactProjection 已保证同 category 唯一 active
-        # 验证没有同 category 重复（未来稳定后可删除此断言）
-        categories_seen = set()
-        for f in selected_facts:
-            if f.category in categories_seen:
-                raise AssertionError(
-                    f"FactProjection 一致性错误: 同 category '{f.category}' 出现多个 active"
-                )
-            categories_seen.add(f.category)
+        # 3. Debug 信息
+        debug_info = {
+            "person_name": person_name,
+            "total_events": ctx.system.event_count if ctx.system else 0,
+            "fact_count": ctx.memory.fact_count if ctx.memory else 0,
+            "stage": ctx.relationship.stage if ctx.relationship else "",
+            "prompt_length": len(prompt_text),
+        }
 
-        # 5. Reasoner（v0.4 实现）
-        reason_result = self.reasoner.reason(query, selected_facts)
-
-        # 6. Context Composer → Prompt Builder
-        snapshot = self.composer.compose(events, person_name)
-        prompt_text = self.builder.build(snapshot)
-
-        # 7. 把筛选后的事实注入 Context
-        if selected_facts:
-            facts_text = "🧠 关于这个人的记忆：\n"
-            for f in selected_facts:
-                facts_text += f"  [{f.category}] {f.content}\n"
-            prompt_text = facts_text + "\n" + prompt_text
-
-        # 8. Debug
-        debug_info = self._build_debug_info(snapshot, events, person_name)
-        debug_info["total_facts"] = fact_state.total
-        debug_info["active_facts"] = fact_state.active_count
-        debug_info["selected_facts"] = len(selected_facts)
-        debug_info["selected_fact_contents"] = [f.content for f in selected_facts]
-
-        # 9. Metadata
+        # 4. Metadata
         metadata = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "person_name": person_name,
             "conversation_id": conversation_id,
-            "total_events": len(events),
+            "total_events": ctx.system.event_count if ctx.system else 0,
             "prompt_length": len(prompt_text),
         }
 
         return MemoryResult(
-            context_snapshot=snapshot,
+            context=ctx,
             prompt_text=prompt_text,
             debug_info=debug_info,
             metadata=metadata,
@@ -124,57 +102,25 @@ class MemoryEngine:
         lines.append(f"=== Memory Debug: {person_name} ===")
         lines.append(f"事件总数: {result.metadata['total_events']}")
         lines.append(f"Prompt 长度: {result.metadata['prompt_length']} 字符")
-        lines.append("")
 
-        snapshot = result.context_snapshot
-        if snapshot.person:
-            lines.append(f"人物: {snapshot.person.name}")
-            if snapshot.person.birthday:
-                lines.append(f"生日: {snapshot.person.birthday}")
-            if snapshot.person.tags:
-                lines.append(f"标签: {', '.join(snapshot.person.tags)}")
-            if snapshot.person.facts:
-                lines.append(f"记忆: {len(snapshot.person.facts)} 条")
-                for f in snapshot.person.facts[:5]:
-                    lines.append(f"  [{f.category}] {f.content}")
+        ctx = result.context
+        if ctx.identity:
+            lines.append(f"人物: {ctx.identity.name}")
+            if ctx.identity.birthday:
+                lines.append(f"生日: {ctx.identity.birthday}")
+            if ctx.identity.tags:
+                lines.append(f"标签: {', '.join(ctx.identity.tags)}")
 
-        if snapshot.relationship:
-            lines.append(f"\n关系: {snapshot.relationship.stage}")
-            lines.append(f"好感度: {snapshot.relationship.base_chemistry}")
+        if ctx.memory and ctx.memory.active_facts:
+            lines.append(f"记忆: {ctx.memory.fact_count} 条")
+            for f in ctx.memory.active_facts[:5]:
+                lines.append(f"  [{f.category}] {f.content}")
 
-        if snapshot.time:
-            if snapshot.time.last_chat_label:
-                lines.append(f"\n最后聊天: {snapshot.time.last_chat_label}")
-            if snapshot.time.silence:
-                lines.append(f"沉默状态: {snapshot.time.silence.label}")
-
-        if snapshot.emotion:
-            if snapshot.emotion.dominant_emotion:
-                lines.append(f"\n主导情绪: {snapshot.emotion.dominant_emotion}")
-
-        if snapshot.excluded:
-            lines.append(f"\n因预算被排除: {', '.join(snapshot.excluded)}")
+        if ctx.relationship:
+            lines.append(f"\n关系: {ctx.relationship.stage}")
+            lines.append(f"好感度: {ctx.relationship.chemistry}")
 
         lines.append(f"\n--- Prompt 内容 ---")
         lines.append(result.prompt_text[:500])
 
         return "\n".join(lines)
-
-    def _build_debug_info(self, snapshot: ContextSnapshot, events: list, person_name: str) -> dict:
-        """构建详细的 Debug 信息"""
-        return {
-            "person_name": person_name,
-            "total_events": len(events),
-            "snapshot_version": snapshot.version,
-            "has_person": snapshot.person is not None,
-            "has_relationship": snapshot.relationship is not None,
-            "has_time": snapshot.time is not None,
-            "has_emotion": snapshot.emotion is not None,
-            "has_growth": snapshot.growth is not None,
-            "has_conversation": snapshot.conversation is not None,
-            "has_reminder": snapshot.reminder is not None,
-            "excluded": snapshot.excluded,
-            "token_used": snapshot.metadata.get("token_used", 0),
-            "budget_limit": snapshot.metadata.get("budget_limit", 0),
-            "prompt_preview": self.builder.build(snapshot)[:300],
-        }

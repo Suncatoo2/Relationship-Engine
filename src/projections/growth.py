@@ -147,8 +147,8 @@ class GrowthProjection(Projection):
                 category=data.get("category", "experience"),
                 description=data.get("description", ""),
                 impact_level=data.get("impact_level", 5),
-                date=data.get("date", e.timestamp[:10]),
-                timestamp=e.timestamp,
+                date=data.get("date", e.occurred_at[:10]),
+                timestamp=e.occurred_at,
             ))
 
         # 按 date 排序

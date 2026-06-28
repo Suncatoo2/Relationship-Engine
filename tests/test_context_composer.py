@@ -16,24 +16,24 @@ def make_full_events(now=None):
     return [
         # 人物
         create_event(type=EventType.PERSON, data={"action": "create", "birthday": "1998-06-15", "tags": ["暧昧"]},
-                     person="小雨", timestamp=(now - timedelta(days=30)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=30)).isoformat()),
         # 记忆
         create_event(type=EventType.FACT, data={"content": "喜欢奶茶", "category": "preference"},
-                     person="小雨", timestamp=(now - timedelta(days=25)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=25)).isoformat()),
         # 聊天
         create_event(type=EventType.CHAT, data={"role": "user", "content": "你好", "topics": ["问候"]},
-                     person="小雨", timestamp=(now - timedelta(days=5)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=5)).isoformat()),
         create_event(type=EventType.CHAT, data={"role": "assistant", "content": "你好呀"},
-                     person="小雨", timestamp=(now - timedelta(days=5, hours=-1)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=5, hours=-1)).isoformat()),
         # 关系
         create_event(type=EventType.RELATION, data={"stage": "暧昧", "delta": 20, "event": "第一次约会"},
-                     person="小雨", timestamp=(now - timedelta(days=10)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=10)).isoformat()),
         # 情绪
         create_event(type=EventType.EMOTION, data={"valence": 0.8, "label": "开心"},
-                     person="小雨", timestamp=(now - timedelta(days=3)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=3)).isoformat()),
         # 成长
         create_event(type=EventType.GROWTH, data={"title": "学会Python", "category": "skill", "impact_level": 7, "date": "2026-01"},
-                     person="小雨", timestamp=(now - timedelta(days=20)).isoformat()),
+                     person="小雨", occurred_at=(now - timedelta(days=20)).isoformat()),
     ]
 
 
@@ -132,13 +132,11 @@ class TestToDict:
         assert "metadata" in d
 
 
-class TestWithEventLog:
-    def test_compose_with_event_log(self, composer, tmp_path):
-        from src.event_log import EventLog
-        log = EventLog(str(tmp_path))
-        for e in make_full_events():
-            log.append(e)
-        snapshot = composer.compose(log, "小雨")
+class TestWithEventList:
+    def test_compose_with_event_list(self, composer):
+        """compose() 接受 list[Event]（Pipeline 标准路径）"""
+        events = make_full_events()
+        snapshot = composer.compose(events, "小雨")
         assert snapshot.person is not None
 
 

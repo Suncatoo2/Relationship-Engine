@@ -101,7 +101,7 @@ class PersonProjection(Projection):
             return
 
         if name not in profiles:
-            profiles[name] = PersonProfile(name=name, first_met=e.timestamp)
+            profiles[name] = PersonProfile(name=name, first_met=e.occurred_at)
 
         p = profiles[name]
         data = e.data
@@ -115,7 +115,7 @@ class PersonProjection(Projection):
         if "notes" in data:
             p.notes = data["notes"]
 
-        p.last_updated = e.timestamp
+        p.last_updated = e.occurred_at
 
     def _apply_fact_event(self, profiles: dict[str, PersonProfile], e: Event):
         """处理 fact 事件：追加事实"""
@@ -124,15 +124,15 @@ class PersonProjection(Projection):
             return
 
         if name not in profiles:
-            profiles[name] = PersonProfile(name=name, first_met=e.timestamp)
+            profiles[name] = PersonProfile(name=name, first_met=e.occurred_at)
 
         p = profiles[name]
         fact = FactRecord(
             content=e.data.get("content", ""),
             category=e.data.get("category", "general"),
             importance=e.data.get("importance", 5),
-            timestamp=e.timestamp,
+            timestamp=e.occurred_at,
         )
         p.facts.append(fact)
         p.fact_count = len(p.facts)
-        p.last_updated = e.timestamp
+        p.last_updated = e.occurred_at

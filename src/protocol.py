@@ -122,6 +122,42 @@ class EmotionBlock:
 
 
 @dataclass(frozen=True)
+class GoalItem:
+    """一条目标/梦想/承诺"""
+    title: str = ""
+    category: str = ""           # "dream" / "goal" / "commitment"
+    target_date: str = ""        # "2027-06" 或空
+    status: str = "active"       # "active" / "completed" / "abandoned"
+    last_mentioned: str = ""     # 最近一次提到的时间
+    confidence: float = 0.9
+
+    def to_dict(self) -> dict:
+        return {
+            "title": self.title,
+            "category": self.category,
+            "target_date": self.target_date,
+            "status": self.status,
+            "last_mentioned": self.last_mentioned,
+            "confidence": self.confidence,
+        }
+
+
+@dataclass(frozen=True)
+class GoalsBlock:
+    """optional: 长期目标与梦想"""
+    active_goals: list = field(default_factory=list)       # list[GoalItem]
+    completed_goals: list = field(default_factory=list)    # list[GoalItem]
+    goal_count: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "active_goals": [g.to_dict() for g in self.active_goals],
+            "completed_goals": [g.to_dict() for g in self.completed_goals],
+            "goal_count": self.goal_count,
+        }
+
+
+@dataclass(frozen=True)
 class SystemBlock:
     """must: 元数据"""
     version: int = 1
@@ -143,7 +179,11 @@ class ContextObject:
     """Memory Engine 输出给所有 LLM 的统一协议
 
     4 must blocks: identity / memory / relationship / time / system
-    2 optional:    emotion / growth
+    3 optional:    emotion / growth / goals
+    版本校验:      last_consumed_event_id（读写一致性安全网）
+
+    ⚠️ 冻结警告：这是最后一次结构性变更。
+    以后只允许增加字段，不修改整体结构。
     """
     identity: IdentityBlock = field(default_factory=IdentityBlock)
     memory: MemoryBlock = field(default_factory=MemoryBlock)
@@ -152,6 +192,9 @@ class ContextObject:
     system: SystemBlock = field(default_factory=SystemBlock)
     emotion: EmotionBlock | None = None
     growth: dict | None = None          # reserved, v0.5
+    goals: GoalsBlock | None = None     # Goal Engine 输出
+    suggestions: list[str] = field(default_factory=list)  # Engine Detect (ADR-007)
+    last_consumed_event_id: str = ""    # 版本校验：当前已消费的最新 event_id
 
     def to_dict(self) -> dict:
         d = {
@@ -160,11 +203,16 @@ class ContextObject:
             "relationship": self.relationship.to_dict(),
             "time": self.time.to_dict(),
             "system": self.system.to_dict(),
+            "last_consumed_event_id": self.last_consumed_event_id,
         }
         if self.emotion:
             d["emotion"] = self.emotion.to_dict()
         if self.growth:
             d["growth"] = self.growth
+        if self.goals:
+            d["goals"] = self.goals.to_dict()
+        if self.suggestions:
+            d["suggestions"] = self.suggestions
         return d
 
     def to_json(self) -> str:

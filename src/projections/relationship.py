@@ -89,7 +89,9 @@ class RelationshipProfile:
     last_contact: str = ""
     last_contact_days: int = -1
     trend: str = "稳定"
-    health: int = 50  # v2 预留，v3 完整实现
+    health: int = 50
+    lifecycle: str = ""  # 关系季节：spring/summer/autumn/winter
+    lifecycle_detail: str = ""
     chemistry_history: list[ChemistryRecord] = field(default_factory=list)
     milestones: list[MilestoneRecord] = field(default_factory=list)
     timeline: list[TimelineEntry] = field(default_factory=list)
@@ -110,6 +112,8 @@ class RelationshipProfile:
             "last_contact_days": self.last_contact_days,
             "trend": self.trend,
             "health": self.health,
+            "lifecycle": self.lifecycle,
+            "lifecycle_detail": self.lifecycle_detail,
             "chemistry_history": [c.to_dict() for c in self.chemistry_history],
             "milestones": [m.to_dict() for m in self.milestones],
             "timeline": [t.to_dict() for t in self.timeline],
@@ -188,10 +192,10 @@ class RelationshipProjection(Projection):
             if new_stage != p.stage:
                 p.previous_stage = p.stage
                 p.stage = new_stage
-                p.stage_changed_at = e.timestamp
+                p.stage_changed_at = e.occurred_at
                 reason = data.get("event", "")
                 p.timeline.append(TimelineEntry(
-                    timestamp=e.timestamp,
+                    timestamp=e.occurred_at,
                     entry_type="stage_change",
                     content=f"{p.previous_stage} → {new_stage}",
                     reason=reason,
@@ -205,22 +209,22 @@ class RelationshipProjection(Projection):
             record = ChemistryRecord(
                 delta=delta,
                 reason=reason,
-                timestamp=e.timestamp,
-                event_id=e.id,
+                timestamp=e.occurred_at,
+                event_id=e.event_id,
             )
             p.chemistry_history.append(record)
             p.timeline.append(TimelineEntry(
-                timestamp=e.timestamp,
+                timestamp=e.occurred_at,
                 entry_type="event",
                 content=reason,
             ))
 
-        p.last_contact = e.timestamp
+        p.last_contact = e.occurred_at
 
     def _apply_chat_event(self, profiles: dict, e: Event):
         """处理 chat 事件：更新最后联系时间"""
         p = self._ensure_profile(profiles, e.person)
-        p.last_contact = e.timestamp
+        p.last_contact = e.occurred_at
 
     def _apply_milestone_event(self, profiles: dict, e: Event):
         """处理 milestone 事件：记录里程碑"""
@@ -230,11 +234,11 @@ class RelationshipProjection(Projection):
             milestone_type=data.get("milestone_type", "custom"),
             description=data.get("description", ""),
             significance=data.get("significance", 5),
-            timestamp=e.timestamp,
+            timestamp=e.occurred_at,
         )
         p.milestones.append(record)
         p.timeline.append(TimelineEntry(
-            timestamp=e.timestamp,
+            timestamp=e.occurred_at,
             entry_type="milestone",
             content=record.description,
         ))
@@ -264,6 +268,9 @@ class RelationshipProjection(Projection):
         # 趋势（最近 30 天的 chemistry 变化）
         p.trend = self._compute_trend(p.chemistry_history, days=30)
 
+        # 关系生命周期（季节检测）
+        p.lifecycle, p.lifecycle_detail = self._compute_lifecycle(p)
+
         # 排序 timeline
         p.timeline.sort(key=lambda t: t.timestamp)
 
@@ -290,3 +297,42 @@ class RelationshipProjection(Projection):
             return "降温"
         else:
             return "稳定"
+
+    @staticmethod
+    def _compute_lifecycle(p: RelationshipProfile) -> tuple[str, str]:
+        """关系生命周期检测（确定性规则，ADR-007: Engine Detects）
+
+        季节:
+          spring: 升温期，频繁联系
+          summer: 亲密期，高频高质
+          autumn: 稳定期，联系减少但质量不变
+          winter: 冷淡期，长期沉默
+        """
+        days = p.last_contact_days
+        chemistry = p.decay_chemistry
+        stage = p.stage
+        trend = p.trend
+
+        # Winter: 长期沉默或关系冷淡
+        if days > 30 or stage in ("冷淡", "分手"):
+            return "winter", f"{days}天未联系" if days > 0 else f"关系阶段: {stage}"
+
+        # Summer: 亲密阶段 + 高好感度 + 近期联系
+        if stage in ("暧昧", "热恋", "重要的人") and chemistry > 60 and days <= 3:
+            return "summer", f"关系阶段: {stage}，好感度 {chemistry}"
+
+        # Spring: 升温中
+        if stage in ("认识", "聊天", "熟悉") and trend in ("升温", "稳定") and days <= 7:
+            return "spring", f"关系阶段: {stage}，趋势 {trend}"
+
+        # Autumn: 稳定但不频繁
+        if stage in ("朋友", "稳定", "长期陪伴") and days > 7:
+            return "autumn", f"关系阶段: {stage}，{days}天未联系"
+
+        # 默认：根据趋势判断
+        if trend == "升温":
+            return "spring", f"趋势: {trend}"
+        elif trend == "降温":
+            return "autumn", f"趋势: {trend}"
+        else:
+            return "autumn", f"关系阶段: {stage}"

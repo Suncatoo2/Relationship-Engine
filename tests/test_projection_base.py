@@ -27,21 +27,21 @@ def make_events():
     now = datetime.now(timezone.utc)
     return [
         create_event(type=EventType.PERSON, data={"action": "create"}, person="小雨",
-                     timestamp=(now - timedelta(days=10)).isoformat()),
+                     occurred_at=(now - timedelta(days=10)).isoformat()),
         create_event(type=EventType.CHAT, data={"content": "你好"}, person="小雨",
-                     timestamp=(now - timedelta(days=5)).isoformat()),
+                     occurred_at=(now - timedelta(days=5)).isoformat()),
         create_event(type=EventType.CHAT, data={"content": "吃饭了吗"}, person="小雨",
-                     timestamp=(now - timedelta(days=2)).isoformat()),
+                     occurred_at=(now - timedelta(days=2)).isoformat()),
         create_event(type=EventType.FACT, data={"content": "喜欢奶茶", "category": "preference"}, person="小雨",
-                     timestamp=(now - timedelta(days=3)).isoformat()),
+                     occurred_at=(now - timedelta(days=3)).isoformat()),
         create_event(type=EventType.EMOTION, data={"valence": 0.8, "label": "开心"}, person="小雨",
-                     timestamp=(now - timedelta(days=1)).isoformat()),
+                     occurred_at=(now - timedelta(days=1)).isoformat()),
         create_event(type=EventType.CHAT, data={"content": "天气不错"}, person="老王",
-                     timestamp=(now - timedelta(days=8)).isoformat()),
+                     occurred_at=(now - timedelta(days=8)).isoformat()),
         create_event(type=EventType.RELATION, data={"stage": "朋友", "delta": 10}, person="老王",
-                     timestamp=(now - timedelta(days=60)).isoformat()),
+                     occurred_at=(now - timedelta(days=60)).isoformat()),
         create_event(type=EventType.GROWTH, data={"title": "学会Python", "category": "skill"}, person="我自己",
-                     timestamp=(now - timedelta(days=30)).isoformat()),
+                     occurred_at=(now - timedelta(days=30)).isoformat()),
     ]
 
 
@@ -132,15 +132,15 @@ class TestSortByTime:
     def test_sort_descending(self, events):
         sorted_events = Projection.sort_by_time(events, desc=True)
         for i in range(len(sorted_events) - 1):
-            ts1 = datetime.fromisoformat(sorted_events[i].timestamp)
-            ts2 = datetime.fromisoformat(sorted_events[i + 1].timestamp)
+            ts1 = datetime.fromisoformat(sorted_events[i].occurred_at)
+            ts2 = datetime.fromisoformat(sorted_events[i + 1].occurred_at)
             assert ts1 >= ts2
 
     def test_sort_ascending(self, events):
         sorted_events = Projection.sort_by_time(events, desc=False)
         for i in range(len(sorted_events) - 1):
-            ts1 = datetime.fromisoformat(sorted_events[i].timestamp)
-            ts2 = datetime.fromisoformat(sorted_events[i + 1].timestamp)
+            ts1 = datetime.fromisoformat(sorted_events[i].occurred_at)
+            ts2 = datetime.fromisoformat(sorted_events[i + 1].occurred_at)
             assert ts1 <= ts2
 
     def test_sort_empty(self):

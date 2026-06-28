@@ -59,7 +59,7 @@ class TestRelationshipReminder:
         events = [
             create_event(type=EventType.PERSON, data={}, person="小雨"),
             create_event(type=EventType.CHAT, data={"content": "晚安"}, person="小雨",
-                         timestamp=(now - timedelta(days=10)).isoformat()),
+                         occurred_at=(now - timedelta(days=10)).isoformat()),
         ]
         result = proj.project(events)
         rel_items = [i for i in result.items if i.reminder_type == ReminderType.RELATIONSHIP]
@@ -72,7 +72,7 @@ class TestRelationshipReminder:
         events = [
             create_event(type=EventType.PERSON, data={}, person="小雨"),
             create_event(type=EventType.CHAT, data={"content": "hi"}, person="小雨",
-                         timestamp=now.isoformat()),
+                         occurred_at=now.isoformat()),
         ]
         result = proj.project(events)
         rel_items = [i for i in result.items if i.reminder_type == ReminderType.RELATIONSHIP]
@@ -87,7 +87,7 @@ class TestEmotionReminder:
             events.append(create_event(type=EventType.EMOTION,
                                         data={"valence": -0.5, "label": "焦虑"},
                                         person="小雨",
-                                        timestamp=(now - timedelta(days=i)).isoformat()))
+                                        occurred_at=(now - timedelta(days=i)).isoformat()))
         result = proj.project(events)
         emo_items = [i for i in result.items if i.reminder_type == ReminderType.EMOTION]
         assert len(emo_items) == 1
@@ -100,7 +100,7 @@ class TestEmotionReminder:
             events.append(create_event(type=EventType.EMOTION,
                                         data={"valence": 0.5, "label": "开心"},
                                         person="小雨",
-                                        timestamp=(now - timedelta(days=i)).isoformat()))
+                                        occurred_at=(now - timedelta(days=i)).isoformat()))
         result = proj.project(events)
         emo_items = [i for i in result.items if i.reminder_type == ReminderType.EMOTION]
         assert len(emo_items) == 0
@@ -112,7 +112,7 @@ class TestGrowthReminder:
         events = [
             create_event(type=EventType.PERSON, data={}, person="小雨"),
             create_event(type=EventType.GROWTH, data={"title": "学Python", "category": "skill", "impact_level": 5, "date": "2025-01"},
-                         person="小雨", timestamp=(now - timedelta(days=100)).isoformat()),
+                         person="小雨", occurred_at=(now - timedelta(days=100)).isoformat()),
         ]
         result = proj.project(events)
         growth_items = [i for i in result.items if i.reminder_type == ReminderType.GROWTH]
@@ -164,7 +164,7 @@ class TestSorting:
         events = [
             create_event(type=EventType.PERSON, data={"birthday": bd}, person="小雨"),
             create_event(type=EventType.CHAT, data={}, person="小雨",
-                         timestamp=(now - timedelta(days=8)).isoformat()),
+                         occurred_at=(now - timedelta(days=8)).isoformat()),
         ]
         result = proj.project(events)
         if len(result.items) >= 2:
