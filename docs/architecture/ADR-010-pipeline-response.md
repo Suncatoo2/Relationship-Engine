@@ -82,9 +82,21 @@ Engine 决策，LLM 表达。ADR-007 的核心。
 ## 版本兼容
 
 ```python
-RecallMetadata(version=1)
-# 解析旧数据时，版本字段保证不会炸。
+@dataclass(frozen=True)         # immutable — 生成后不可变，保证可复现
+class RecallMetadata:
+    version: int = 1             # scoring 版本：Keyword(1) → Embedding(2) → Graph(3)
+    engine_version: str = "v0.8" # Engine 版本，用于追溯
+    recall_strategy: str = ""
+    retrieval_latency: float = 0.0
+    scoring_method: str = ""
+    cache_hit: bool = False
+    snapshot_used: bool = False
+    event_count: int = 0
 ```
+
+**Immutable** — Metadata 一旦生成就不可变。任何 Debug 都能得到完全一致的解释结果（Reproducibility）。
+
+**engine_version** — 未来 Scoring 公式从 Keyword → Embedding → Graph 演进时，历史 Metadata 仍可追溯。"这个 score=0.85 是 v0.8 的 Keyword 公式算的，不是 v2.0 的 Graph 公式"。
 
 ## 序列化
 
