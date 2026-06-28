@@ -188,9 +188,11 @@ Relationship-Engine/
 |------|------|------|
 | v0.1 | 聊天（SSE 流式 + Event Log + ChatGPT 风格 UI） | ✅ 完成 |
 | v0.2 | Memory Engine（自动读取记忆 + Prompt Log + Debug 面板） | ✅ 完成 |
-| v0.3 | Provider Layer（模型无关接入） | 📋 计划中 |
-| v0.4 | Relationship Timeline | 📋 计划中 |
-| v0.5 | Emotion + Reminder | 📋 计划中 |
+| v0.3 | Provider Layer（DeepSeek）+ Memory Selector + FactProjection + 冲突解决 | ✅ 完成 |
+| v0.3.9 | Memory Test Suite（32 个自动化测试场景） | ✅ 完成 |
+| v0.3.95 | FactProjection（Stateless + Immutable 纯函数设计） | ✅ 完成 |
+| v0.4 | Memory 分层（Facts / Preferences / Personality / Emotion） | 📋 计划中 |
+| v0.5 | 语义搜索 + 动态权重 + Persona Lab | 📋 计划中 |
 | v1.0 | Relationship OS | 🎯 目标 |
 
 ---
