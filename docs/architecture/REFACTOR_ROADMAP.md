@@ -4,7 +4,25 @@
 
 ---
 
-## 必须在 v0.4 前解决的（Blockers）
+## v0.4 必须完成（Interaction Pipeline）
+
+| # | 任务 | 文件 | 说明 |
+|---|------|------|------|
+| 1 | InteractionPipeline | `src/interaction_pipeline.py` | 统一入口 + pub/sub |
+| 2 | ProjectionDispatcher | `src/projection_dispatcher.py` | 插件化分发 |
+| 3 | web_server 改为调用 pipeline.publish() | `src/web_server.py` | 替换手动写 Event |
+| 4 | Memory Engine 改为调用 pipeline.snapshot() | `src/memory_engine.py` | 替换手动 replay |
+
+## v0.4.5 必须完成（Snapshot + 增量）
+
+| # | 任务 |
+|---|------|
+| 1 | Projection.apply() 实时更新 |
+| 2 | Projection.snapshot() 序列化 |
+| 3 | from_snapshot() 恢复 |
+| 4 | Incremental Projection（只 replay 新事件） |
+
+## v0.5 扩展引擎
 
 | # | 问题 | 位置 | 影响范围 | 修复方案 |
 |---|------|------|---------|---------|
