@@ -1,91 +1,130 @@
 # Relationship OS — Roadmap
 
-> Vision 是梦想，Roadmap 是路线。
+> Vision 是梦想，Roadmap 是路线。打开这一个文件就知道项目在哪。
 
 ---
 
-## v0.1 — 聊天（已完成）
+## Phase 0: Foundation（已完成 ✅）
 
-- [x] ChatGPT 风格聊天界面
-- [x] SSE 流式输出
-- [x] Markdown 渲染 + 代码高亮
-- [x] Event Log 自动保存
-- [x] 重启后记忆保留
-- [x] 会话管理（多对话）
+- [x] 架构讨论 + ADR (5 decisions)
+- [x] ARCHITECTURE_PRINCIPLES.md (7 principles)
+- [x] Context Contract v1 (4 must blocks + 2 optional)
+- [x] Event Schema
+- [x] Projection Interface
+- [x] Storage Interface
+- [x] Git + GitHub
 
-## v0.2 — Memory Engine（已完成 ✅）
-
-- [x] Memory Engine 独立模块（可替换）
-- [x] 自动读取记忆 → 生成 Context
-- [x] ContextSnapshot 结构化输出
-- [x] Prompt Log 保存（完整 prompt 链路）
-- [x] Debug 面板（🧠 Memory 按钮）
-- [x] Debug API
-
-## v0.3 — Provider Layer（进行中）
-
-- [ ] 关系时间线展示
-- [ ] 重要事件标记
-- [ ] 认识天数计算
-- [ ] 关系阶段可视化
-
-## v0.3.99 — Architecture Review（进行中）
-
-- [x] Memory 生命周期文档
-- [x] Projection Snapshot + Incremental 接口设计
-- [x] Storage 抽象层设计（JSONL → SQLite → 图数据库）
-- [x] REFACTOR_ROADMAP（技术债路线图）
-- [ ] MCP Tool 重构设计
-
-## v0.4 — Memory 分层（计划中）
-
-- [ ] 情绪自动识别（调用方 AI 写入）
-- [ ] 情绪趋势分析
-- [ ] 情绪预警
-- [ ] 长期情绪模式
-
-## v0.5 — Reminder
-
-- [ ] 生日提醒
-- [ ] 失联提醒
-- [ ] 重要事件提醒
-- [ ] 主动问候
-
-## v0.6 — Multi Person
-
-- [ ] 多人物管理
-- [ ] 人物画像展示
-- [ ] 关系网络
-- [ ] 身份切换
-
-## v0.7 — Knowledge
-
-- [ ] 知识图谱
-- [ ] 兴趣追踪
-- [ ] 长期目标
-- [ ] 记忆整合（压缩旧记忆）
-
-## v0.8 — Skills
-
-- [ ] MCP Server 完整功能
-- [ ] 第三方 AI 接入
-- [ ] API 文档
-- [ ] 插件系统
-
-## v0.9 — Voice
-
-- [ ] 语音输入
-- [ ] 语音输出
-- [ ] 多模态支持
-
-## v1.0 — Relationship OS
-
-- [ ] 完整 Relationship OS
-- [ ] 迁移 React
-- [ ] 多平台支持（Web / APP / 桌面）
-- [ ] 社区版发布
+**Completed: 2026-06-27**
 
 ---
 
-*每个版本完成后，打 GitHub Release。*
-*每完成一个版本，回来更新这个文件。*
+## Phase 1: Protocol（统一语言）
+
+```
+目标: 所有模块说同一种语言
+进度: 0%
+```
+
+- [ ] `ContextObject` dataclass (Identity / Memory / Relationship / Time / Emotion / System)
+- [ ] `Event` schema 固化 (id / timestamp / source / type / payload)
+- [ ] `Projection` interface 统一 (apply / update / output)
+- [ ] `Storage` interface 统一 (append / read_since / snapshot / restore)
+
+---
+
+## Phase 2: Pipeline（最小闭环）
+
+```
+目标: 一条 Event 完整流过整个系统
+进度: 0%
+```
+
+- [ ] `InteractionPipeline` (publish / recall / snapshot / rebuild)
+- [ ] `ProjectionDispatcher` (register / dispatch / snapshot_all)
+- [ ] `ContextComposer` (筛选 → 排序 → 摘要 → 压缩)
+- [ ] `Snapshot` (定期保存 Projection 快照)
+- [ ] 端到端验证: 一句话跑通全链路
+
+---
+
+## Phase 3: Projection Ecosystem
+
+```
+目标: 新 Projection = 一行注册, 不改 Pipeline
+进度: 0%
+```
+
+- [ ] FactProjection (已有基础)
+- [ ] PersonProjection (已有基础)
+- [ ] RelationshipProjection (已有基础)
+- [ ] TimeContextProjection (已有基础)
+- [ ] EmotionProjection (已有基础)
+- [ ] GrowthProjection (已有基础)
+- [ ] ReminderProjection (已有基础)
+- [ ] ConversationProjection (已有基础)
+- [ ] TimelineProjection (新建)
+- [ ] GoalProjection (新建)
+
+---
+
+## Phase 4: Adapter + Storage
+
+```
+目标: 多模型 + 高性能存储
+进度: 0%
+```
+
+- [ ] Prompt Adapter (Claude / GPT / Gemini / DeepSeek)
+- [ ] Storage 切换 (JSONL → SQLite，不改业务代码)
+- [ ] Incremental Projection (百万级事件)
+- [ ] Memory Compaction (压缩旧事件)
+
+---
+
+## Future（远期规划）
+
+```
+Phase 5: Intelligence
+  □ Semantic Search (embedding)
+  □ Memory Reasoner (推断)
+  □ Proactive Memory (主动提醒)
+  □ Emotion Engine (情绪分析)
+  □ Relationship Engine (关系演化)
+
+Phase 6: Interaction
+  □ Plugin System
+  □ MCP Server v2
+  □ WebUI v2 (React)
+  □ Voice Input / Output
+  □ Multi-modal Support
+
+Phase 7: Platform
+  □ Multi-user
+  □ Multi-device sync
+  □ Social Graph
+  □ Community Edition
+  □ Mobile App
+
+Phase 8: Beyond
+  □ AR / Hologram
+  □ Brain-Computer Interface
+  □ ...
+```
+
+---
+
+## Milestones
+
+| Tag | 内容 | 状态 |
+|-----|------|------|
+| v0.3.95 | FactProjection + 32 tests | ✅ |
+| v0.3.99 | Architecture Review (10 docs + 7 principles + 5 ADR) | ✅ |
+| v0.4 | Phase 1+2: Protocol + Pipeline 最小闭环 | 📋 |
+| v0.5 | Phase 3: Projection Ecosystem | 📋 |
+| v0.6 | Phase 4: Adapter + Storage | 📋 |
+| v1.0 | Relationship OS MVP | 🎯 |
+
+---
+
+*每个 Phase 完成后，打 GitHub Release。*
+*每完成一个 Phase，回来更新这个文件。*
