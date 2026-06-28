@@ -29,7 +29,15 @@
 - [ ] 认识天数计算
 - [ ] 关系阶段可视化
 
-## v0.4 — Emotion
+## v0.3.99 — Architecture Review（进行中）
+
+- [x] Memory 生命周期文档
+- [x] Projection Snapshot + Incremental 接口设计
+- [x] Storage 抽象层设计（JSONL → SQLite → 图数据库）
+- [x] REFACTOR_ROADMAP（技术债路线图）
+- [ ] MCP Tool 重构设计
+
+## v0.4 — Memory 分层（计划中）
 
 - [ ] 情绪自动识别（调用方 AI 写入）
 - [ ] 情绪趋势分析
