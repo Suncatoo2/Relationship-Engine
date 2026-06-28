@@ -4,7 +4,17 @@
 
 ---
 
-## 1. Design Philosophy（设计哲学）
+## Design Philosophy（设计哲学）
+
+### 三句话定义职责边界
+
+> **Memory 保存历史（History），Projection 计算状态（State），Context 服务推理（Reasoning）。**
+
+- **Memory**：忠实记录发生过什么，永远不修改历史
+- **Projection**：根据历史计算出当前状态，可以随时重建
+- **Context**：从当前状态中提炼出最值得 LLM 知道的信息，而不是把所有数据一股脑塞给模型
+
+---
 
 ### Engine never competes with LLM for thinking
 

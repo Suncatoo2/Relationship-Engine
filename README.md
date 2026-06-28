@@ -190,10 +190,10 @@ Relationship-Engine/
 | v0.2 | Memory Engine（自动读取记忆 + Prompt Log + Debug 面板） | ✅ 完成 |
 | v0.3 | Provider Layer（DeepSeek）+ Memory Selector + FactProjection + 冲突解决 | ✅ 完成 |
 | v0.3.99 | Architecture Review（5 份设计文档 + ADR） | ✅ 完成 |
-| v0.4 | Interaction Pipeline（publish + dispatch + Snapshot） | 📋 计划中 |
-| v0.5 | Projection 扩展（Relationship / Emotion / Growth / Timeline） | 📋 计划中 |
-| v0.6 | Incremental Projection + Storage Layer (SQLite) | 📋 计划中 |
-| v0.7 | Prompt Adapter Layer（Claude / GPT / Gemini / Qwen 各自 Prompt 格式） | 📋 计划中 |
+| v0.4 | Phase 1+2: Protocol + Pipeline（统一语言 + 跑通全链路） | 📋 计划中 |
+| v0.5 | Phase 3: Projection Ecosystem（Relationship / Emotion / Growth / Timeline） | 📋 计划中 |
+| v0.6 | Phase 4: Snapshot + Incremental + Storage Layer | 📋 计划中 |
+| v0.7 | Prompt Adapter（Claude / GPT / Gemini / DeepSeek） | 📋 计划中 |
 | v1.0 | Relationship OS | 🎯 目标 |
 
 ---

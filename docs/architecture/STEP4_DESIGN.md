@@ -1,6 +1,64 @@
 # Step 4 — Interaction Pipeline + Context Contract v1
 
-> 先定接口，再写代码。先定 Contract，再造 Pipeline。
+> 四个阶段，不是版本号。
+
+---
+
+## 开发阶段
+
+```
+Phase 1: Protocol（协议）
+  统一语言：Context Object / Event Schema / Projection Interface / Storage Interface
+  目标：所有模块说同一种语言
+
+Phase 2: Pipeline（流水线）
+  publish → EventBus → Dispatcher → Projection → Snapshot → ContextComposer
+  目标：跑通全链路，哪怕只有一个 Projection
+
+Phase 3: Projection Ecosystem
+  Relationship / Emotion / Growth / Timeline / Goals / Reminder...
+  目标：插拔式挂载，不改 Pipeline
+
+Phase 4: Prompt Adapter
+  Context Object → Claude / GPT / Gemini / DeepSeek Prompt
+  目标：上下文先稳定，Adapter 最后做
+```
+
+---
+
+## Context Composer — 最关键的一层
+
+Context 不是数据库 dump。
+
+Context 应该回答一个问题：**"如果我是 AI，现在最应该知道什么？"**
+
+```
+错误（Memory Dump）:
+  用户有 3000 条聊天记录 → 全部塞进 Prompt
+
+正确（Current World State）:
+  最近 7 天发生了什么？
+  现在情绪怎么样？
+  最近最重要的人是谁？
+  正在推进哪个项目？
+  今天有没有要提醒？
+```
+
+### Composer 的真正职责
+
+```
+Projection Outputs（原始数据）
+    │
+    ▼
+Context Composer
+    ├── 筛选（哪些信息现在最重要？）
+    ├── 排序（按相关性排列）
+    ├── 摘要（把 raw data 变成 LLM 友好的叙述）
+    └── 压缩（Token 预算内，只保留最重要的）
+    │
+    ▼
+Context Object（当前世界状态）
+```
 
 ---
 
