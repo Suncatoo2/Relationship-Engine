@@ -309,3 +309,57 @@ Engine 不推理 → PromptAdapter 不思考 → LLM 自由生成
 - Interaction Philosophy 独立于任何 LLM，是产品的"灵魂"
 - 换 GPT/Claude/DeepSeek 时，这些原则不变
 - PromptAdapter 只维护 signal → constraint 映射表，不维护文案
+
+---
+
+## ADR-009: Memory Retrieval Policy
+
+**日期：** 2026-06-28
+**状态：** Accepted
+
+### 决策
+
+明确 Memory Retrieval（记忆检索）的触发条件、排序规则、生命周期和 Projection 边界。
+
+### Retrieval Trigger
+
+当 Pipeline.recall() 被调用时触发历史召回。每次 recall 都从 Event Log 全量或增量读取，由 Projection 重新计算。
+
+### Retrieval Ranking
+
+```
+Score = Semantic Relevance + Temporal Distance + Relationship Weight + Importance
+```
+
+- Semantic Relevance: 按关键词/embedding 匹配（Phase 3+ 实现）
+- Temporal Distance: 最近的事件权重更高
+- Relationship Weight: 亲密人物的记忆优先
+- Importance: LLM 标记的重要性权重
+
+### Working Memory Lifecycle
+
+ContextObject 每轮根据当前 recall 重建。不是持久化缓存。
+
+```
+查询 "小雨考试" → Working Memory: 小雨相关
+查询 "外卖"     → Working Memory: 外卖相关（小雨退出）
+查询 "天气"     → Working Memory: 天气相关（外卖退出）
+```
+
+### Projection Boundary
+
+Engine 只做 Detect，不做 Infer。
+
+```
+允许（Deterministic Detection）:
+  time_gap, days_since_last_contact, chemistry_decay
+
+禁止（Semantic Inference）:
+  last_topic, emotion_label, user_intent, mood_cause
+```
+
+### 后果
+
+- Working Memory 不跨轮次缓存
+- ContextObject 每轮重建（project() 纯函数天然支持）
+- Retrieval Ranking 持续演进，但不影响 Pipeline.recall() 接口

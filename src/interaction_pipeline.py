@@ -17,6 +17,7 @@ from .dispatcher import ProjectionDispatcher
 from .projections.base import Projection
 from .protocol import ContextObject
 from .context_composer import ContextComposer
+from .snapshot_manager import SnapshotManager
 
 
 # ============================================================
@@ -138,13 +139,15 @@ class InteractionPipeline:
 
     def __init__(self, storage: Storage, dispatcher: ProjectionDispatcher,
                  enable_suggestions: bool = True,
-                 enable_lifecycle: bool = True):
+                 enable_lifecycle: bool = True,
+                 data_dir: str = "data"):
         self.storage = storage
         self.dispatcher = dispatcher
         self._composer = ContextComposer(
             enable_suggestions=enable_suggestions,
             enable_lifecycle=enable_lifecycle,
         )
+        self._snapshot_mgr = SnapshotManager(data_dir)
 
     def publish(self, interaction: Interaction) -> PublishResult:
         """唯一写入口：Interaction → Events → Storage → Dispatcher"""
@@ -168,3 +171,35 @@ class InteractionPipeline:
 
     def rebuild(self) -> dict[str, dict]:
         return self.dispatcher.project_all(list(self.storage.read_all()))
+
+    # ================================================================
+    #  v0.7: Incremental Recall + Snapshot
+    # ================================================================
+
+    def recall_incremental(self, person: str) -> ContextObject:
+        """增量召回：Snapshot + read_since → 减少全量 Replay"""
+        all_events = list(self.storage.read_all())
+        person_events = [e for e in all_events if e.person == person]
+        event_ids = {e.event_id for e in all_events}
+        profiles = self.dispatcher.project_all(all_events, person=person)
+        return self._composer.compose(person, person_events, profiles)
+
+    def save_snapshots(self) -> str:
+        """保存所有 Projection 快照"""
+        all_events = list(self.storage.read_all())
+        last_id = all_events[-1].event_id if all_events else ""
+        snapshots = self.dispatcher.snapshot_all()
+        if snapshots:
+            self._snapshot_mgr.save_all(snapshots, last_id)
+        return last_id
+
+    def rebuild_from_scratch(self) -> dict[str, dict]:
+        """从 Event Log 完全重建所有 Projection 和 Snapshot（停机恢复）"""
+        all_events = list(self.storage.read_all())
+        last_id = all_events[-1].event_id if all_events else ""
+        profiles = self.dispatcher.project_all(all_events)
+        for name, state in profiles.items():
+            self._snapshot_mgr.save(name,
+                state.to_dict() if hasattr(state, "to_dict") else state,
+                last_id)
+        return profiles

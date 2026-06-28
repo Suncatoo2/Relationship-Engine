@@ -144,17 +144,76 @@ stage = 亲密:
 
 ---
 
-## 为什么这些原则重要
+## Memory System 统一原则
 
-它们定义的不是 AI 能做什么，而是 AI **不应该**做什么。
+### 1. Engine = Verifiable Facts
 
-- 不应该自我感动
-- 不应该宣告记忆
-- 不应该替用户决定话题
-- 不应该用文学语言指导 LLM
-- 不应该为边缘场景增加核心字段
+只输出可验证事实，不产生语义总结。
 
-**真正的 AI 陪伴，是让用户感觉"它在这里"，而不是"它在表演"。**
+```
+允许: {"time_gap": "30d"}           ← 可断言
+禁止: {"last_topic": "考试"}        ← 语义推断
+禁止: {"emotion_label": "想念"}     ← 情绪推断
+
+ContextObject 应该是:
+  observations（观察），不是 interpretations（解释）
+  detections（检测），不是 inferences（推断）
+  facts（事实），不是 narratives（叙事）
+```
+
+### 2. PromptAdapter = Behavioral Constraints
+
+只规定行为边界，不规定人格或情绪。
+
+```
+允许: "Acknowledge information boundaries."
+允许: "Never fabricate unavailable facts."
+允许: "Invite continuation when appropriate."
+
+禁止: "Express curiosity about the user's feelings."
+禁止: "Show concern for the user's situation."
+禁止: "Leave the door open naturally."
+```
+
+真实语言温度交给 LLM，PromptAdapter 只告诉 LLM **能做什么、不能做什么**。
+
+### 3. LLM = Natural Expression
+
+自然组织语言、形成主题、体现温度，但不得改变事实。
+
+### 4. ContextObject = Working Memory, not Cache
+
+ContextObject 每轮根据 Query 重建，不是持久化缓存。
+
+```
+查询 "小雨考试" → Working Memory: 小雨相关 facts
+                  ↓
+查询 "外卖"     → Working Memory: 外卖相关 facts
+                  ↓ （小雨 facts 自动退出）
+查询 "天气"     → Working Memory: 天气相关 facts
+```
+
+这不是 TTL 过期机制，而是 Focus-based Reconstruction——当用户切换主题后，过期数据自动退出 Working Memory。Engine 的 `project()` 纯函数特性天然支持每轮重建。
+
+### 5. Show, don't tell — Memory 的可信度来自 Recall，不是 Statement
+
+```
+不要说 "我一直记得" → 正确引用历史事实
+不要说 "我没有忘记" → 准确接上过去的上下文
+不要说 "你的记忆还在" → 用事实回答用户的问题
+```
+
+---
+
+## 未来演进记录
+
+以下变更记录为未来 Major Version 的结构性调整方向，当前版本不做修改。
+
+| 当前字段 | 问题 | 未来调整 |
+|---------|------|---------|
+| `memory_summary` | "summary" 暗示有人做了总结，但 Engine 不应该总结 | 升级为 `memory_facts`（纯事实拼接，零语义） |
+
+触发条件：下一个 Major Version（v2.0）或 API Contract 修订时。
 
 ---
 

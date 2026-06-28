@@ -166,6 +166,51 @@ class TestPipeline:
         results = pipeline.rebuild()
         assert isinstance(results, dict)
 
+    # ---- v0.7: Incremental Replay + Recovery ----
+
+    def test_recall_incremental_returns_same_result(self, tmp_path):
+        """增量召回应与普通 recall 一致"""
+        pipeline = make_pipeline(tmp_path, projections=[FactProjection()])
+        pipeline.publish(Interaction(message="hi", person="x",
+                                     facts=[FactInput(content="blue", category="preference")]))
+        ctx1 = pipeline.recall("x")
+        ctx2 = pipeline.recall_incremental("x")
+        d1 = ctx1.to_dict()
+        d2 = ctx2.to_dict()
+        d1["system"]["generated_at"] = ""
+        d2["system"]["generated_at"] = ""
+        assert d1 == d2
+
+    def test_save_and_recall_incremental(self, tmp_path):
+        """保存 snapshot 后增量召回应正确"""
+        store = JSONLStorage(str(tmp_path))
+        disp = ProjectionDispatcher()
+        fp = FactProjection()
+        disp.register(fp, event_types=["fact"])
+        pipeline = InteractionPipeline(storage=store, dispatcher=disp,
+                                       data_dir=str(tmp_path))
+
+        pipeline.publish(Interaction(message="hi", person="x",
+                                     facts=[FactInput(content="blue", category="preference")]))
+        pipeline.save_snapshots()
+
+        pipeline.publish(Interaction(message="more", person="x",
+                                     facts=[FactInput(content="green", category="preference")]))
+
+        ctx = pipeline.recall_incremental("x")
+        assert ctx.identity.name == "x"
+        assert ctx.memory.fact_count >= 1
+
+    def test_rebuild_from_scratch(self, tmp_path):
+        """rebuild_from_scratch 应重建所有 Snapshot"""
+        pipeline = make_pipeline(tmp_path, projections=[FactProjection()])
+        pipeline.publish(Interaction(message="hi", person="x",
+                                     facts=[FactInput(content="blue", category="preference")]))
+        profiles = pipeline.rebuild_from_scratch()
+        assert "FactProjection" in profiles
+        names = pipeline._snapshot_mgr.list_snapshots()
+        assert "factprojection" in names
+
     # ---- 端到端验证（6 检查点）----
 
     def test_end_to_end_one_message(self, tmp_path):

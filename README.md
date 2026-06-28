@@ -59,22 +59,38 @@ AI 不应该只会回答：
 ## 架构
 
 ```
-Event Log（唯一数据源）
-    │
-    ▼
-Projection Layer（7 个 Projection）
-    │  Person / Relationship / Time / Emotion / Growth / Reminder / Conversation
-    ▼
-Context Composer（组合 + 预算控制）
-    │
-    ▼
-Prompt Builder（LLM 适配层）
-    │
-    ▼
-AI（Claude / GPT / DeepSeek / Qwen）
+用户输入 (Interaction)
+      │
+      ▼
+Pipeline.publish()          ← 唯一写入口
+      │
+      ├── Storage.append(event)  ← 不可变 Event Log
+      └── Dispatcher.dispatch()  ← registry 模式路由
+              │
+              ▼
+Projection Layer (6 个)
+  Fact / Person / Relationship / Time / Emotion / Growth
+              │
+              ▼
+ContextComposer
+  ├── MemoryReasoner (summary)
+  ├── Suggestions (Engine Detects)
+  └── ContextObject (标准 JSON)
+              │
+              ▼
+PromptAdapter
+  ├── Claude / GPT / DeepSeek
+  └── 行为约束（Constraint, 不是 Prose）
+              │
+              ▼
+LLM → 回复
 ```
 
+**10 条架构原则** · **9 个 ADR** · **6 条交互哲学**
+
 核心设计原则：**Everything is Event, Everything else is Projection.**
+
+详见 [MEMORY_FLOW.md](docs/MEMORY_FLOW.md)
 
 ---
 
@@ -154,50 +170,87 @@ python -m src.main --http
 Relationship-Engine/
 ├── src/
 │   ├── event_types.py           # Event 数据结构 + 枚举
-│   ├── event_log.py             # append-only JSONL 存储
+│   ├── event_log.py             # append-only JSONL（底层实现）
+│   ├── storage.py               # Storage 抽象接口 + JSONLStorage
+│   ├── interaction_pipeline.py  # Pipeline（37 行，只做协调）
+│   ├── dispatcher.py            # Dispatcher（registry 模式）
+│   ├── context_composer.py      # ContextComposer（Projections → ContextObject）
+│   ├── memory_engine.py         # Memory Engine（适配层）
+│   ├── memory_reasoner.py       # MemoryReasoner（summary + highlights）
+│   ├── prompt_adapter.py        # PromptAdapter（Claude/GPT/DeepSeek）
+│   ├── snapshot_manager.py      # SnapshotManager（save/load/verify）
 │   ├── provider.py              # LLM Provider Interface
-│   ├── mcp_server.py            # MCP Server（7 Write + 5 Read + 2 Resources）
+│   ├── protocol.py              # ContextObject（frozen API Contract）
 │   ├── web_server.py            # Web Server（SSE 流式 + 会话管理）
-│   ├── memory_engine.py         # Memory Engine（记忆引擎）
+│   ├── mcp_server.py            # MCP Server（接入 Pipeline）
 │   ├── main.py                  # 入口（--web / --http / stdio）
-│   ├── web/
-│   │   └── chat.html            # ChatGPT 风格聊天界面
-│   └── projections/
-│       ├── base.py              # Projection 基类
-│       ├── person.py            # 人物画像
-│       ├── relationship.py      # 关系状态 + 衰减模型
-│       ├── time_context.py      # 时间感知
-│       ├── emotion.py           # 情绪摘要
-│       ├── growth.py            # 成长时间线
-│       ├── reminder.py          # 智能提醒
-│       ├── conversation.py      # 对话分析
-│       ├── context.py           # Context Composer
-│       └── prompt_builder.py    # Prompt Builder
-├── tests/                       # 249 单元测试 + 47 验收测试
+│   ├── web/chat.html            # ChatGPT 风格聊天界面
+│   └── projections/             # Projection Layer（6 个）
+│       ├── base.py              # Projection 基类（apply + snapshot + info）
+│       ├── fact_state.py        # FactProjection
+│       ├── person.py            # PersonProjection
+│       ├── relationship.py      # Relationship + Lifecycle
+│       ├── time_context.py      # TimeContext
+│       ├── emotion.py           # Emotion + Momentum
+│       ├── growth.py            # Growth
+│       ├── reminder.py          # Reminder
+│       ├── conversation.py      # Conversation
+│       ├── context.py           # Context Composer（旧版）
+│       └── prompt_builder.py    # Prompt Builder（旧版）
+├── tests/                       # 344 单元测试 + Golden + Regression
+│   └── golden/context_object.json
+├── examples/
+│   └── alice_demo.py            # 端到端演示
 ├── docs/
-│   ├── Vision.md                # 项目灵魂
+│   ├── VISION.md                # 项目灵魂
 │   ├── ROADMAP.md               # 版本路线图
-│   ├── ARCHITECTURE.md          # 完整架构设计文档
-│   ├── PHASE3_REPORT.md         # Phase 3 发布报告
-│   └── SESSION.md               # 开发存档
-└── data/                        # 持久化数据（JSONL）
+│   ├── HANDOFF.md               # 项目交接文档
+│   ├── MEMORY_FLOW.md           # 数据流全景图
+│   └── architecture/
+│       ├── ARCHITECTURE_PRINCIPLES.md   # 10 条原则
+│       ├── ARCHITECTURE_DECISIONS.md    # 9 个 ADR
+│       ├── INTERACTION_PHILOSOPHY.md    # 6 条交互哲学
+│       └── 01_pipeline_architecture.md  # Pipeline 架构设计
+└── data/{user_id}/              # 多用户数据隔离
+    └── events.jsonl
 ```
 
 ---
 
-## 开发进度
+## 版本
 
-| 版本 | 内容 | 状态 |
+本项目采用双轨制：
+
+```
+Architecture Releases — 架构阶段（设计已完成，定义系统边界和能力）
+Implementation Releases — 实现版本（代码已完成，可运行）
+
+架构先于实现，设计先于编码。
+```
+
+### Architecture Progress
+
+| 版本 | 能力 | 状态 |
 |------|------|------|
-| v0.1 | 聊天（SSE 流式 + Event Log + ChatGPT 风格 UI） | ✅ 完成 |
-| v0.2 | Memory Engine（自动读取记忆 + Prompt Log + Debug 面板） | ✅ 完成 |
-| v0.3 | Provider Layer（DeepSeek）+ Memory Selector + FactProjection + 冲突解决 | ✅ 完成 |
-| v0.3.99 | Architecture Review（5 份设计文档 + ADR） | ✅ 完成 |
-| v0.4 | Phase 1+2: Protocol + Pipeline（统一语言 + 跑通全链路） | 📋 计划中 |
-| v0.5 | Phase 3: Projection Ecosystem（Relationship / Emotion / Growth / Timeline） | 📋 计划中 |
-| v0.6 | Phase 4: Snapshot + Incremental + Storage Layer | 📋 计划中 |
-| v0.7 | Prompt Adapter（Claude / GPT / Gemini / DeepSeek） | 📋 计划中 |
-| v1.0 | Relationship OS | 🎯 目标 |
+| v0.4 | Infrastructure — Pipeline + Dispatcher + Storage + ADR 1-6 | ✅ |
+| v0.5 | Memory Core — ContextComposer + Reasoner + Golden Context | ✅ |
+| v0.6 | Output Layer — PromptAdapter + Lifecycle + Momentum | ✅ |
+| v0.7 | Performance — SnapshotManager + Incremental + Recovery | ✅ |
+| v1.0 | Relationship OS — 生产就绪 | 🎯 |
+
+### Implementation Progress
+
+| 版本 | 内容 | 测试 | 状态 |
+|------|------|------|------|
+| v0.1 | 聊天（SSE 流式 + Event Log + ChatGPT 风格 UI） | — | ✅ |
+| v0.2 | Memory Engine（自动读取记忆 + Prompt Log + Debug） | — | ✅ |
+| v0.3 | 8 Projections + MCP Server + Context Composer | 249 | ✅ |
+| v0.3.99 | Architecture Review（5 ADR + 7 Principles） | — | ✅ |
+| v0.4 | Infrastructure（Pipeline + Dispatcher + Storage） | 344 | ✅ |
+| v0.5 | Memory Core（Reasoner + Golden + Goals + Regression） | 344 | ✅ |
+| v0.6 | Output Layer（PromptAdapter + Momentum + Lifecycle） | 344 | ✅ |
+| v0.7 | Performance（SnapshotManager） | 344 | ✅ |
+| v1.0 | Relationship OS MVP | — | 📋 |
 
 ---
 
