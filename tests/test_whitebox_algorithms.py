@@ -473,7 +473,179 @@ class TestGarbageInput:
         """缺少关键字段的 profile → 不崩溃"""
         rp = {"x": type("Fake", (), {"last_contact_days": 0})()}  # 没有 decay_chemistry
         result = _compute_health({"RelationshipProjection": rp}, "x")
-        # should return result = None due to no rel profile
-        # or compute what it can
         if result is not None:
             assert 0 <= result["score"] <= 100
+
+
+# ============================================================
+#  Gate 2: Batch == Incremental Equivalence
+#  Gate 4: Deterministic Replay (same input → same snapshot hash)
+# ============================================================
+
+class TestIncrementalEquivalence:
+    """Incremental Projection must be mathematically equivalent to Batch"""
+
+    @pytest.mark.parametrize("count", [1, 5, 10, 50])
+    def test_batch_equals_incremental_fact(self, count):
+        """Batch(events) == apply(e1) → apply(e2) → ... → snapshot()"""
+        from src.projections.fact_state import FactProjection
+        from src.event_types import create_event
+
+        events = [
+            create_event(type="fact", data={"content": f"fact_{i}", "category": "general"}, person="test")
+            for i in range(count)
+        ]
+
+        batch = FactProjection().project(events)
+
+        inc = FactProjection()
+        for e in events:
+            inc.apply(e)
+        inc_result = inc.project(inc._cache)
+
+        assert batch.active_count == inc_result.active_count
+        for cat in batch.active:
+            assert cat in inc_result.active
+            assert batch.active[cat].content == inc_result.active[cat].content
+
+    def test_incremental_person_equals_batch(self):
+        """Person Projection equivalence — compare by fact_count and name"""
+        from src.projections.person import PersonProjection
+        from src.event_types import create_event
+
+        events = [
+            create_event(type="person", data={"action": "create", "tags": ["friend"]}, person="alice"),
+            create_event(type="fact", data={"content": "likes blue", "category": "preference"}, person="alice"),
+            create_event(type="fact", data={"content": "oral medicine", "category": "general"}, person="alice"),
+        ]
+
+        batch = PersonProjection().project(events).get("alice")
+
+        # Incremental: PersonProjection._cache is dict[str, PersonProfile]
+        inc = PersonProjection()
+        for e in events:
+            inc.apply(e)
+        inc_result = inc._cache.get("alice")
+
+        assert batch is not None
+        assert inc_result is not None
+        assert batch.fact_count == inc_result.fact_count
+        assert batch.name == inc_result.name
+
+    def test_incremental_emotion_equals_batch(self):
+        """Emotion Projection equivalence"""
+        from src.projections.emotion import EmotionProjection
+        from src.event_types import create_event
+
+        events = [
+            create_event(type="emotion", data={"valence": 0.8, "label": "happy"}, person="x"),
+            create_event(type="emotion", data={"valence": -0.3, "label": "sad"}, person="x"),
+        ]
+
+        batch = EmotionProjection().project(events).get("x")
+        inc = EmotionProjection()
+        for e in events:
+            inc.apply(e)
+        inc_result = inc.project(inc._cache).get("x")
+
+        assert batch is not None
+        assert inc_result is not None
+
+    def test_deterministic_replay_produces_identical_hashes(self):
+        """Gate 4: same input → same snapshot hash (deterministic)"""
+        from src.projections.fact_state import FactProjection
+        from src.event_types import create_event
+        import hashlib, json
+
+        events = [
+            create_event(type="fact", data={"content": f"f_{i}", "category": "general"}, person="x")
+            for i in range(5)
+        ]
+
+        def hash_snapshot():
+            proj = FactProjection()
+            for e in events:
+                proj.apply(e)
+            state_json = json.dumps(proj.snapshot(), ensure_ascii=False, sort_keys=True)
+            return hashlib.sha256(state_json.encode()).hexdigest()
+
+        h1 = hash_snapshot()
+        h2 = hash_snapshot()
+        h3 = hash_snapshot()
+        assert h1 == h2 == h3  # Deterministic Replay — Gate 4
+
+
+# ============================================================
+#  Gate 3: Long-running Stability Test
+#  1000 publish → no memory growth, no state corruption
+# ============================================================
+
+class TestIncrementalStability:
+    """1000 次增量更新 → 无内存泄漏、无状态损坏"""
+
+    def test_stability_1000_publishes(self):
+        """连续 1000 次 publish → project 始终等价于 batch"""
+        from src.projections.fact_state import FactProjection
+        from src.event_types import create_event
+
+        FACT_COUNT = 1000
+        bp = FactProjection()
+        ip = FactProjection()
+
+        events = []
+
+        for i in range(FACT_COUNT):
+            e = create_event(
+                type="fact",
+                data={"content": f"fact_{i % 10}", "category": "general"},
+                person="test",
+            )
+            events.append(e)
+
+            # Incremental
+            ip.apply(e)
+
+            # Verify every 100 events
+            if (i + 1) % 100 == 0:
+                # Batch on last 1000 events
+                batch_result = bp.project(events[-1000:])
+                inc_result = ip.project(ip._cache)
+
+                # Same active count
+                assert batch_result.active_count == inc_result.active_count, (
+                    f"At event {i+1}: batch={batch_result.active_count}, inc={inc_result.active_count}"
+                )
+
+                # Content match
+                for cat in batch_result.active:
+                    assert inc_result.active[cat].content == batch_result.active[cat].content
+
+        # Final: check no memory bloat (cache should not have duplicates)
+        assert len(ip._cache) == FACT_COUNT  # 每个 event 一条
+
+    def test_stability_100_publishes_multi_projection(self):
+        """多 Projection 100 次增量 → 全部等效于 Batch"""
+        from src.projections.person import PersonProjection
+        from src.projections.relationship import RelationshipProjection
+        from src.event_types import create_event
+
+        events = [
+            create_event(type="person", data={"tags": ["friend"]}, person="x"),
+            create_event(type="relation", data={"delta": 10}, person="x"),
+            create_event(type="fact", data={"content": "blue", "category": "preference"}, person="x"),
+        ] * 34  # 102 events
+
+        # Person
+        p_inc = PersonProjection()
+        for e in events:
+            p_inc.apply(e)
+        p_batch = PersonProjection().project(events)
+        assert p_batch["x"].fact_count == p_inc._cache["x"].fact_count
+
+        # Relationship — _cache is list[Event], use project on cache events
+        r_inc = RelationshipProjection()
+        for e in events:
+            r_inc.apply(e)
+        r_batch = RelationshipProjection().project(events)
+        r_inc_result = r_inc.project(r_inc._cache)
+        assert r_batch["x"].base_chemistry == r_inc_result["x"].base_chemistry

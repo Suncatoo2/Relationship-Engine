@@ -64,13 +64,15 @@ class TestSnapshotManager:
         assert manager.list_snapshots() == []
 
     def test_snapshot_has_all_required_fields(self, manager):
-        """快照必须包含 version + last_event_id + last_calculated_timestamp"""
+        """快照必须包含 schema_version + projection_version + last_event_id + checksum"""
         manager.save("TestProjection", {"x": 1}, "event_1")
         filepath = os.path.join(manager.snapshot_dir, "testprojection.json")
         with open(filepath) as f:
             data = json.load(f)
-        assert "version" in data
+        assert "schema_version" in data
+        assert "projection_version" in data
         assert "last_event_id" in data
+        assert "checksum" in data
         assert "last_calculated_timestamp" in data
         assert data["last_event_id"] == "event_1"
         assert data["state"] == {"x": 1}
