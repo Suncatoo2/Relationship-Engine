@@ -122,41 +122,8 @@ async def stream_llm_response(message: str, context: str, history: list[dict]) -
             await asyncio.sleep(0.02)
 
 
-def build_system_prompt(context: str) -> str:
-    """构建 system prompt，注入 Memory Context"""
-    base = (
-        "你是 Relationship OS — 一个能够和人一起经历时间的 AI。\n"
-        "你能记住用户的信息、关系、情绪和成长。\n"
-        "根据以下关系上下文回复用户。自然地回复，像一个懂人心的朋友。\n"
-        "不要提及你是 AI，不要说'根据上下文'。直接融入对话。\n"
-        "如果上下文为空，说明这是第一次见面，自然地开始对话。\n"
-    )
-    if context:
-        return f"{base}\n=== 关系记忆 ===\n{context}"
-    return base
-
-
-def generate_offline_reply(message: str, history: list[dict], context: str) -> str:
-    """离线模式的智能回复（利用 Context）"""
-    msg = message.strip().lower()
-
-    if not history:
-        if context:
-            return f"你好！我记住了关于你的信息。\n\n我能感觉到我们之前有过交流。配置好 API Key 后，我能真正理解你、记住你，并随着时间陪伴你成长。"
-        return f"你好！这是我们第一次聊天。\n\n你刚才说了：「{message}」\n\n我记住了。"
-
-    if "你好" in msg or "hi" in msg or "hello" in msg:
-        return f"你好！我们已经聊了 {len(history)} 条消息了。\n\n有什么想聊的吗？"
-
-    if "记住" in msg or "记得" in msg:
-        if context:
-            return f"我记得我们的对话。\n\n我能感受到我们之间的关系。配置 API Key 后，我能结合这些记忆给出更有意义的回复。"
-        return f"我记得我们之前的对话。\n\n我们已经聊了 {len(history)} 条消息。"
-
-    if "?" in msg or "？" in msg:
-        return f"这是一个好问题。\n\n你问的是：「{message}」\n\n离线模式下我只能做简单回复。配置好 API Key 后，我能结合你们的关系背景给出有意义的回答。"
-
-    return f"收到：「{message}」\n\n我们已经聊了 {len(history) + 1} 条消息了。\n\n*（离线模式 — 配置 API Key 后接入真实 AI）*"
+# build_system_prompt() — removed (replaced by PromptAdapter)
+# generate_offline_reply() — removed (replaced by PromptAdapter)
 
 
 # ---- 页面 ----
