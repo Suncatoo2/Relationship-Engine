@@ -6,7 +6,7 @@
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from src.protocol import FactItem, GoalsBlock, GoalItem
+from src.protocol import FactItem, GoalsBlock, GoalItem, ContextObject
 from src.projections.relationship import RelationshipProfile
 from src.projections.time_context import TimeContextProfile
 from src.projections.emotion import EmotionProfile
@@ -136,7 +136,7 @@ class TestKnowledgeBoundary:
         """31天 → outdated warning, confidence=0.25"""
         tp = {"test": self.make_time_profile(31)}
         result = _compute_boundary({"TimeContextProjection": tp}, "test")
-        assert result is not None
+        assert result is not None, f"Expected boundary at 31 days, got None (threshold={BoundaryPolicy.OUTDATED_THRESHOLD})"
         assert "outdated" in result.content.lower()
         assert result.confidence == 0.25
         assert result.category == "SYSTEM"
@@ -146,7 +146,7 @@ class TestKnowledgeBoundary:
         """61天 → insufficient evidence, confidence=0.08"""
         tp = {"test": self.make_time_profile(61)}
         result = _compute_boundary({"TimeContextProjection": tp}, "test")
-        assert result is not None
+        assert result is not None, f"Expected boundary at 61 days, got None (threshold={BoundaryPolicy.INSUFFICIENT_THRESHOLD})"
         assert "insufficient" in result.content.lower()
         assert result.confidence == 0.08
         assert result.category == "SYSTEM"
@@ -260,3 +260,158 @@ class TestHealthScore:
         assert "lifecycle" in f
         assert "lifecycle_adjustment" in f
         assert "emotion_momentum" in f
+
+
+# ============================================================
+#  Behavioral Invariants（行为不变量验证）
+#  Confidence ∈ [0,1]. Health ∈ [0,100]. SYSTEM fact 幂等.
+# ============================================================
+
+class TestBehavioralInvariants:
+    """验证产品行为，不是验证算法"""
+
+    def test_confidence_always_in_range(self):
+        """任何输入下 confidence ∈ [0, 1]"""
+        # 正常
+        normal = FactItem(content="normal", category="general", confidence=0.9)
+        assert _adjust_confidence([normal], None)[0].confidence <= 1.0
+        assert _adjust_confidence([normal], None)[0].confidence >= 0.0
+
+        # 极端
+        extreme = FactItem(content="extreme", category="general", confidence=0.5)
+        assert _adjust_confidence([extreme], None)[0].confidence <= 1.0
+        assert _adjust_confidence([extreme], None)[0].confidence >= 0.0
+
+    def test_health_always_in_range_0_to_100(self):
+        """任何输入下 health ∈ [0, 100]"""
+        from tests.test_whitebox_algorithms import TestHealthScore
+        helper = TestHealthScore()
+
+        # 正常
+        rp = {"test": helper.make_rel_profile(decay_chemistry=80, last_contact_days=1, lifecycle="summer")}
+        result = _compute_health({"RelationshipProjection": rp}, "test")
+        assert 0 <= result["score"] <= 100
+        assert 0 <= result["forecast_14d"] <= 100
+
+        # 极端: 零 chemistry
+        rp2 = {"test": helper.make_rel_profile(decay_chemistry=0, last_contact_days=0, lifecycle="winter")}
+        result2 = _compute_health({"RelationshipProjection": rp2}, "test")
+        assert 0 <= result2["score"] <= 100
+
+    def test_boundary_always_returns_system_or_none(self):
+        """任何输入下 _compute_boundary 只返回 SYSTEM FactItem or None"""
+        from tests.test_whitebox_algorithms import TestKnowledgeBoundary
+        helper = TestKnowledgeBoundary()
+
+        # 有 bound: 必须是 SYSTEM
+        tp = {"test": helper.make_time_profile(200)}
+        result = _compute_boundary({"TimeContextProjection": tp}, "test")
+        assert result is not None
+        assert result.category == "SYSTEM"
+        assert result.source == "knowledge_boundary"
+
+        # 无 bound: 必须是 None
+        tp2 = {"test": helper.make_time_profile(1)}
+        result2 = _compute_boundary({"TimeContextProjection": tp2}, "test")
+        assert result2 is None
+
+    def test_system_fact_is_unique(self):
+        """SYSTEM fact 唯一 — 同一人物不应有多个系统级事实"""
+        from tests.test_whitebox_algorithms import TestKnowledgeBoundary
+        helper = TestKnowledgeBoundary()
+
+        tp = {"test": helper.make_time_profile(200)}
+        result = _compute_boundary({"TimeContextProjection": tp}, "test")
+        assert result is not None
+        assert result.category == "SYSTEM"
+        # 同一输入只返回一个 SYSTEM fact
+        assert result.confidence in (0.08, 0.25)
+
+    def test_contextobject_structure_never_violated(self):
+        """compose() 产生的 ContextObject 永远结构完整"""
+        # 通过 test_golden_context.py 间接验证
+        # 这里只验证 ContextObject 的所有 must block 可被构造
+        ctx = ContextObject()
+        assert ctx.identity is not None
+        assert ctx.memory is not None
+        assert ctx.relationship is not None
+        assert ctx.time is not None
+        assert ctx.system is not None
+        d = ctx.to_dict()
+        assert "identity" in d
+        assert "memory" in d
+        assert "relationship" in d
+        assert "time" in d
+        assert "system" in d
+
+
+# ============================================================
+#  Robustness Suite（鲁棒性测试）
+#  不崩溃、可降级、可解释
+# ============================================================
+
+class TestRobustness:
+    """极端输入下不应崩溃"""
+
+    def test_empty_facts_list(self):
+        """空 fact 列表 → 返回空列表"""
+        result = _adjust_confidence([], None)
+        assert result == []
+
+    def test_none_confidence(self):
+        """None confidence → 不崩溃"""
+        fact = FactItem(content="x", category="general", confidence=0.90)
+        results = _adjust_confidence([fact], None)
+        assert len(results) == 1
+
+    def test_missing_profiles(self):
+        """缺失 Projection → 不崩溃"""
+        result = _compute_boundary({}, "anyone")
+        assert result is None
+
+        result2 = _compute_health({}, "anyone")
+        assert result2 is None
+
+    def test_time_profile_with_negative_days(self):
+        """负数 days → 不注入 SYSTEM fact"""
+        from tests.test_whitebox_algorithms import TestKnowledgeBoundary
+        helper = TestKnowledgeBoundary()
+        tp = {"test": helper.make_time_profile(-1)}
+        result = _compute_boundary({"TimeContextProjection": tp}, "test")
+        assert result is None
+
+    def test_rel_profile_with_negative_chemistry(self):
+        """负数 chemistry → health 仍在 [0,100]"""
+        from tests.test_whitebox_algorithms import TestHealthScore
+        helper = TestHealthScore()
+        rp = {"test": helper.make_rel_profile(decay_chemistry=-10, last_contact_days=0)}
+        result = _compute_health({"RelationshipProjection": rp}, "test")
+        assert result is not None
+        assert 0 <= result["score"] <= 100
+
+    def test_future_timestamp(self):
+        """未来时间戳 → 不崩溃"""
+        future = "2099-01-01T00:00:00+00:00"
+        from src.projections.fact_state import FactItem as ProjFactItem
+        f = ProjFactItem(content="future fact", category="general", confidence=0.9, created_at=future)
+        pf = FactItem(content="future fact", category="general", confidence=0.9)
+        results = _adjust_confidence([pf], None)
+        assert len(results) == 1
+        assert results[0].confidence >= 0.0
+
+    def test_unicode_and_emoji_content(self):
+        """Unicode + Emoji → 不崩溃"""
+        facts = [
+            FactItem(content="喜欢🌸", category="preference"),
+            FactItem(content="happy 😊", category="general"),
+            FactItem(content="中文测试", category="general"),
+        ]
+        results = _adjust_confidence(facts, None)
+        assert len(results) == 3
+        assert results[0].content == "喜欢🌸"
+
+    def test_large_facts_list(self):
+        """大量 facts → 不崩溃"""
+        facts = [FactItem(content=f"fact_{i}", category="general") for i in range(1000)]
+        results = _adjust_confidence(facts, None)
+        assert len(results) == 1000

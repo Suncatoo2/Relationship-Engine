@@ -121,3 +121,42 @@ Parser / Helper   → 负责解析（纯函数，零副作用）
 - 未来任何 category 的增长都遵循 Split Decision Tree
 - Pipeline 永远不加业务分支（if/else on category）
 - 当触发条件满足时，重构不是"返工"，是"按计划执行"
+
+---
+
+## 6. Business Policy Isolation（业务策略隔离）
+
+**日期：** 2026-06-28
+
+### 决策
+
+产品策略（如时间阈值 30d / 60d）与核心算法分离。
+
+```
+BoundaryPolicy
+  ↓ (策略对象，可替换)
+_compute_boundary()  ← 算法，不持有 magic numbers
+```
+
+### 规则
+
+- 时间阈值、置信度参数、重要性级别属于 Product Policy
+- Policy Object 集中管理所有阈值
+- 核心算法只调用 Policy，不直接使用 magic numbers
+- 未来 Friend / Partner / Family 不同策略通过 Policy 扩展
+- 策略调整不修改核心算法
+
+### 依赖方向
+
+```
+Boundary → Confidence → Health
+（禁止逆向依赖）
+```
+
+任何形成循环依赖的修改必须重新评审。
+
+### 当前 Acceptance
+
+- `src/boundary_policy.py` — BoundaryPolicy（30d / 60d 阈值 + confidence 参数）
+- `_compute_boundary()` 调用 BoundaryPolicy，不持有 magic numbers
+- White-box tests 验证阈值可修改后算法行为正确

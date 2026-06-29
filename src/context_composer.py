@@ -22,6 +22,7 @@ from .protocol import (
     RelationshipBlock, TimeBlock, EmotionBlock, GoalsBlock, GoalItem, SystemBlock,
 )
 from .memory_reasoner import MemoryReasoner
+from .boundary_policy import BoundaryPolicy
 
 
 # ============================================================
@@ -105,22 +106,24 @@ def _compute_boundary(profiles: dict, person: str) -> FactItem | None:
 
     now = datetime.now(timezone.utc).isoformat()
 
-    if days > 60:
+    bp = BoundaryPolicy
+
+    if days > bp.INSUFFICIENT_THRESHOLD:
         return FactItem(
-            content=f"The engine has insufficient evidence about {person}'s recent state. No interaction in {days} days.",
+            content=bp.insufficient_message(person, days),
             category="SYSTEM",
-            confidence=0.08,
-            importance=9,
+            confidence=bp.INSUFFICIENT_CONFIDENCE,
+            importance=bp.INSUFFICIENT_IMPORTANCE,
             source="knowledge_boundary",
             status="active",
         )
 
-    if days > 30:
+    if days > bp.OUTDATED_THRESHOLD:
         return FactItem(
-            content=f"The engine's knowledge about {person} is becoming outdated. Last interaction was {days} days ago.",
+            content=bp.outdated_message(person, days),
             category="SYSTEM",
-            confidence=0.25,
-            importance=7,
+            confidence=bp.OUTDATED_CONFIDENCE,
+            importance=bp.OUTDATED_IMPORTANCE,
             source="knowledge_boundary",
             status="active",
         )
