@@ -45,7 +45,7 @@ def _adjust_confidence(facts: list, fact_state) -> list:
     adjusted = []
 
     for f in facts:
-        conf = f.confidence
+        conf = max(0.0, min(1.0, f.confidence))  # 先 clamp 到合法范围
 
         # recency
         created = getattr(f, "created_at", None) or getattr(f, "last_mentioned", None)
@@ -108,22 +108,22 @@ def _compute_boundary(profiles: dict, person: str) -> FactItem | None:
 
     bp = BoundaryPolicy
 
-    if days > bp.INSUFFICIENT_THRESHOLD:
+    if days > bp.insufficient_threshold():
         return FactItem(
             content=bp.insufficient_message(person, days),
             category="SYSTEM",
-            confidence=bp.INSUFFICIENT_CONFIDENCE,
-            importance=bp.INSUFFICIENT_IMPORTANCE,
+            confidence=bp.insufficient_confidence(),
+            importance=bp.insufficient_importance(),
             source="knowledge_boundary",
             status="active",
         )
 
-    if days > bp.OUTDATED_THRESHOLD:
+    if days > bp.outdated_threshold():
         return FactItem(
             content=bp.outdated_message(person, days),
             category="SYSTEM",
-            confidence=bp.OUTDATED_CONFIDENCE,
-            importance=bp.OUTDATED_IMPORTANCE,
+            confidence=bp.outdated_confidence(),
+            importance=bp.outdated_importance(),
             source="knowledge_boundary",
             status="active",
         )

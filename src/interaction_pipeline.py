@@ -18,6 +18,7 @@ from .projections.base import Projection
 from .protocol import ContextObject
 from .context_composer import ContextComposer
 from .snapshot_manager import SnapshotManager
+from .pipeline_response import PipelineResponse, RecallMetadata
 
 
 # ============================================================
@@ -159,12 +160,19 @@ class InteractionPipeline:
             self.dispatcher.dispatch(stored)
         return PublishResult(event_id=event_ids[0], derived_event_ids=event_ids)
 
-    def recall(self, person: str) -> ContextObject:
+    def recall(self, person: str) -> PipelineResponse:
         """唯一读出口：Storage → Projection → ContextObject"""
         all_events = list(self.storage.read_all())
         person_events = [e for e in all_events if e.person == person]
         profiles = self.dispatcher.project_all(all_events, person=person)
-        return self._composer.compose(person, person_events, profiles)
+        ctx = self._composer.compose(person, person_events, profiles)
+        return PipelineResponse(
+            context=ctx,
+            metadata=RecallMetadata(
+                event_count=len(person_events),
+            ),
+            diagnostics=None,
+        )
 
     def snapshot(self) -> dict[str, dict]:
         return self.dispatcher.snapshot_all()

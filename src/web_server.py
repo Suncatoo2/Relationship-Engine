@@ -317,7 +317,7 @@ async def debug_prompts(limit: int = 10):
 async def debug_explain(person: str, query: str = ""):
     """解释 AI 为什么这样回答——展示使用了哪些记忆"""
     # 使用 Pipeline.recall() 新架构替代旧 MemorySelector
-    ctx = _pipeline.recall(person)
+    ctx = _pipeline.recall(person).context
     facts_used = []
     if ctx.memory and ctx.memory.active_facts:
         for f in ctx.memory.active_facts:

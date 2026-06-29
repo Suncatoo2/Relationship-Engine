@@ -137,7 +137,8 @@ class TestPipeline:
     def test_recall_minimal(self, tmp_path):
         pipeline = make_pipeline(tmp_path)
         pipeline.publish(Interaction(message="hello", person="小旭"))
-        ctx = pipeline.recall("小旭")
+        resp = pipeline.recall("小旭")
+        ctx = resp.context
         assert ctx.identity.name == "小旭"
 
     def test_recall_with_facts(self, tmp_path):
@@ -146,7 +147,8 @@ class TestPipeline:
             message="小雨喜欢蓝色", person="小雨",
             facts=[FactInput(content="喜欢蓝色", category="preference")],
         ))
-        ctx = pipeline.recall("小雨")
+        resp = pipeline.recall("小雨")
+        ctx = resp.context
         assert ctx.memory is not None
         assert ctx.system is not None
         assert ctx.memory.fact_count >= 1
@@ -173,7 +175,8 @@ class TestPipeline:
         pipeline = make_pipeline(tmp_path, projections=[FactProjection()])
         pipeline.publish(Interaction(message="hi", person="x",
                                      facts=[FactInput(content="blue", category="preference")]))
-        ctx1 = pipeline.recall("x")
+        resp1 = pipeline.recall("x")
+        ctx1 = resp1.context
         ctx2 = pipeline.recall_incremental("x")
         d1 = ctx1.to_dict()
         d2 = ctx2.to_dict()
@@ -256,7 +259,8 @@ class TestPipeline:
         assert len(fact_proj._cache) >= 1
 
         # 检查点 5: ContextObject 可序列化且包含新增内容
-        ctx = pipeline.recall("小旭")
+        resp = pipeline.recall("小旭")
+        ctx = resp.context
         assert ctx.identity.name == "小旭"
         assert ctx.memory.fact_count >= 1
         d = ctx.to_dict()
@@ -265,7 +269,8 @@ class TestPipeline:
         assert "小旭" in j
 
         # 检查点 6: 重复 recall 幂等
-        ctx2 = pipeline.recall("小旭")
+        resp2 = pipeline.recall("小旭")
+        ctx2 = resp2.context
         assert ctx2.memory.fact_count >= 1
         assert ctx2.identity is not None
         assert ctx2.system is not None

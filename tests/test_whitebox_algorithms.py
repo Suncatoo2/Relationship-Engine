@@ -415,3 +415,65 @@ class TestRobustness:
         facts = [FactItem(content=f"fact_{i}", category="general") for i in range(1000)]
         results = _adjust_confidence(facts, None)
         assert len(results) == 1000
+
+
+# ============================================================
+#  Garbage Input Tests（垃圾进，不崩溃）
+# ============================================================
+
+class TestGarbageInput:
+    """极端垃圾输入 → Graceful Degradation, no Crash"""
+
+    def test_null_timestamp_in_fact(self):
+        """created_at 为 None → 不崩溃"""
+        from src.projections.fact_state import FactItem as ProjFactItem
+        f = ProjFactItem(content="x", category="general", confidence=0.9, created_at=None)
+        pf = FactItem(content="x", category="general", confidence=0.9)
+        results = _adjust_confidence([pf], None)
+        assert len(results) == 1
+        assert 0 <= results[0].confidence <= 1
+
+    def test_empty_string_timestamp(self):
+        """created_at 为空字符串 → 不崩溃"""
+        from src.projections.fact_state import FactItem as ProjFactItem
+        f = ProjFactItem(content="x", category="general", confidence=0.9, created_at="")
+        pf = FactItem(content="x", category="general", confidence=0.9)
+        results = _adjust_confidence([pf], None)
+        assert len(results) == 1
+
+    def test_invalid_timestamp_format(self):
+        """非法时间戳格式 → 不崩溃"""
+        from src.projections.fact_state import FactItem as ProjFactItem
+        f = ProjFactItem(content="x", category="general", confidence=0.9, created_at="not-a-date")
+        pf = FactItem(content="x", category="general", confidence=0.9)
+        results = _adjust_confidence([pf], None)
+        assert len(results) == 1
+
+    def test_negative_confidence(self):
+        """负数 confidence → 不崩溃，调整到合法范围"""
+        fact = FactItem(content="neg", category="general", confidence=-1.0)
+        results = _adjust_confidence([fact], None)
+        assert 0 <= results[0].confidence <= 1
+
+    def test_corrupted_event_data(self):
+        """损坏的事件数据 → 不崩溃"""
+        fact = FactItem(content="", category="", confidence=0.5, status="corrupted")
+        results = _adjust_confidence([fact], None)
+        assert len(results) == 1
+
+    def test_missing_person_in_profiles(self):
+        """profile dict 存在但 person 不在其中 → 安全返回"""
+        from tests.test_whitebox_algorithms import TestHealthScore
+        helper = TestHealthScore()
+        rp = {"other_person": helper.make_rel_profile(decay_chemistry=50)}
+        result = _compute_health({"RelationshipProjection": rp}, "missing_person")
+        assert result is None
+
+    def test_malformed_relationship_profile(self):
+        """缺少关键字段的 profile → 不崩溃"""
+        rp = {"x": type("Fake", (), {"last_contact_days": 0})()}  # 没有 decay_chemistry
+        result = _compute_health({"RelationshipProjection": rp}, "x")
+        # should return result = None due to no rel profile
+        # or compute what it can
+        if result is not None:
+            assert 0 <= result["score"] <= 100

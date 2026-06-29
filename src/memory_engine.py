@@ -59,7 +59,8 @@ class MemoryEngine:
         3. 构建 Debug 信息
         """
         # 1. Pipeline.recall() — 唯一读出口
-        ctx = self.pipeline.recall(person_name)
+        response = self.pipeline.recall(person_name)
+        ctx = response.context
 
         # 2. 用 PromptAdapter 生成 Prompt（不再硬编码拼接）
         prompt_text = self._adapter.build(ctx)

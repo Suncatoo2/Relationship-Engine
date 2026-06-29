@@ -68,8 +68,8 @@ def _generate_context_dict(tmp_path) -> dict:
     """生成 ContextObject 并返回 to_dict()"""
     pipeline = _build_pipeline(tmp_path)
     _seed_data(pipeline)
-    ctx = pipeline.recall("小雨")
-    return ctx.to_dict()
+    response = pipeline.recall("小雨")
+    return response.context.to_dict()
 
 
 # ============================================================
@@ -164,7 +164,9 @@ class TestContextEdgeCases:
         store = JSONLStorage(str(tmp_path))
         disp = ProjectionDispatcher()
         pipeline = InteractionPipeline(storage=store, dispatcher=disp)
-        ctx = pipeline.recall("不存在的人")
+        resp_tmp = pipeline.recall("不存在的人")
+
+        ctx = resp_tmp.context
         assert ctx.identity.name == "不存在的人"
         assert ctx.memory.fact_count == 0
         assert ctx.system.event_count == 0
@@ -182,8 +184,10 @@ class TestContextEdgeCases:
         pipeline.publish(Interaction(message="b", person="Bob",
                                      facts=[FactInput(content="likes green", category="preference")]))
 
-        ctx_alice = pipeline.recall("Alice")
-        ctx_bob = pipeline.recall("Bob")
+        resp_alice = pipeline.recall("Alice")
+        ctx_alice = resp_alice.context
+        resp_bob = pipeline.recall("Bob")
+        ctx_bob = resp_bob.context
 
         # Alice 的 facts 应该只有 "likes red"
         assert any(f.content == "likes red" for f in ctx_alice.memory.active_facts)
@@ -198,8 +202,10 @@ class TestContextEdgeCases:
         pipeline = _build_pipeline(tmp_path)
         _seed_data(pipeline)
 
-        ctx1 = pipeline.recall("小雨")
-        ctx2 = pipeline.recall("小雨")
+        resp1 = pipeline.recall("小雨")
+        ctx1 = resp1.context
+        resp2 = pipeline.recall("小雨")
+        ctx2 = resp2.context
 
         d1 = ctx1.to_dict()
         d2 = ctx2.to_dict()
@@ -219,7 +225,10 @@ class TestContextEdgeCases:
         pipeline.publish(Interaction(message="hi", person="x",
                                      facts=[FactInput(content="likes blue", category="preference")]))
 
-        ctx = pipeline.recall("x")
+        resp_tmp = pipeline.recall("x")
+
+
+        ctx = resp_tmp.context
         assert ctx.goals is None
 
     def test_context_version_frozen(self, tmp_path):

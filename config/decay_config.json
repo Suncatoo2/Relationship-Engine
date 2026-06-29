@@ -1,0 +1,23 @@
+{
+  "boundary_policy": {
+    "outdated_threshold_days": 30,
+    "insufficient_threshold_days": 60,
+    "outdated_confidence": 0.25,
+    "insufficient_confidence": 0.08,
+    "outdated_importance": 7,
+    "insufficient_importance": 9
+  },
+  "emotion_momentum": {
+    "lambda": 0.1,
+    "alert_decline_days": 5,
+    "alert_decline_threshold": 0.2
+  },
+  "relationship_health": {
+    "chemistry_weight": 0.5,
+    "contact_penalty_max": 40,
+    "lifecycle_bonus_spring": 10,
+    "lifecycle_bonus_summer": 15,
+    "lifecycle_bonus_autumn": 0,
+    "lifecycle_penalty_winter": -20
+  }
+}
