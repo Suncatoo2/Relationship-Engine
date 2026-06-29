@@ -177,7 +177,8 @@ class TestPipeline:
                                      facts=[FactInput(content="blue", category="preference")]))
         resp1 = pipeline.recall("x")
         ctx1 = resp1.context
-        ctx2 = pipeline.recall_incremental("x")
+        resp2 = pipeline.recall_incremental("x")
+        ctx2 = resp2.context
         d1 = ctx1.to_dict()
         d2 = ctx2.to_dict()
         d1["system"]["generated_at"] = ""
@@ -200,7 +201,8 @@ class TestPipeline:
         pipeline.publish(Interaction(message="more", person="x",
                                      facts=[FactInput(content="green", category="preference")]))
 
-        ctx = pipeline.recall_incremental("x")
+        resp = pipeline.recall_incremental("x")
+        ctx = resp.context
         assert ctx.identity.name == "x"
         assert ctx.memory.fact_count >= 1
 

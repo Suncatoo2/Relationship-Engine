@@ -184,13 +184,9 @@ class InteractionPipeline:
     #  v0.7: Incremental Recall + Snapshot
     # ================================================================
 
-    def recall_incremental(self, person: str) -> ContextObject:
-        """增量召回：Snapshot + read_since → 减少全量 Replay"""
-        all_events = list(self.storage.read_all())
-        person_events = [e for e in all_events if e.person == person]
-        event_ids = {e.event_id for e in all_events}
-        profiles = self.dispatcher.project_all(all_events, person=person)
-        return self._composer.compose(person, person_events, profiles)
+    def recall_incremental(self, person: str) -> PipelineResponse:
+        """增量召回：当前数据量下等同于全量 recall"""
+        return self.recall(person)
 
     def save_snapshots(self) -> str:
         """保存所有 Projection 快照"""

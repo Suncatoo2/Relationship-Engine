@@ -30,6 +30,8 @@ from .projections.relationship import RelationshipProjection
 from .projections.time_context import TimeContextProjection
 from .projections.emotion import EmotionProjection
 from .projections.growth import GrowthProjection
+from .projections.conversation import ConversationProjection
+from .projections.reminder import ReminderProjection
 from .memory_engine import MemoryEngine
 from .prompt_adapter import get_adapter
 from .provider import create_provider
@@ -66,6 +68,8 @@ _dispatcher.register(RelationshipProjection(),  event_types=["relation", "chat",
 _dispatcher.register(TimeContextProjection(),   event_types=["chat", "person", "milestone"])
 _dispatcher.register(EmotionProjection(),       event_types=["emotion"])
 _dispatcher.register(GrowthProjection(),        event_types=["growth"])
+_dispatcher.register(ConversationProjection(),  event_types=["chat"])
+_dispatcher.register(ReminderProjection(),      event_types=["person", "milestone", "emotion", "reminder"])
 
 _pipeline = InteractionPipeline(storage=_storage, dispatcher=_dispatcher)
 
