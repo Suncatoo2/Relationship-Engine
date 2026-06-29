@@ -316,22 +316,20 @@ async def debug_prompts(limit: int = 10):
 @app.get("/api/debug/explain")
 async def debug_explain(person: str, query: str = ""):
     """解释 AI 为什么这样回答——展示使用了哪些记忆"""
-    events = list(_storage.read_all())
-    facts = [e for e in events if e.type == "fact" and e.person == person]
-    from .memory_selector import MemorySelector, FactItem
-    selector = MemorySelector()
-    fact_items = [FactItem(
-        content=e.data.get("content", ""), category=e.data.get("category", "general"),
-        importance=e.data.get("importance", 5), importance_reason="",
-        source=e.data.get("source", ""), confidence=e.data.get("confidence", 0.5),
-        created_at=e.occurred_at, times_confirmed=e.data.get("times_confirmed", 1),
-        status=e.data.get("status", "active"),
-    ) for e in facts]
-    selected = selector.select(query, fact_items) if query else fact_items[:10]
+    # 使用 Pipeline.recall() 新架构替代旧 MemorySelector
+    ctx = _pipeline.recall(person)
+    facts_used = []
+    if ctx.memory and ctx.memory.active_facts:
+        for f in ctx.memory.active_facts:
+            facts_used.append({
+                "content": f.content, "category": f.category,
+                "confidence": f.confidence, "status": f.status,
+            })
     return {
-        "query": query, "total_facts": len(facts), "selected_facts": len(selected),
-        "facts_used": [{"content": f.content, "category": f.category, "confidence": f.confidence, "status": f.status} for f in selected],
-        "by_status": {"active": len([f for f in fact_items if f.status == "active"]), "deprecated": len([f for f in fact_items if f.status == "deprecated"])},
+        "query": query,
+        "total_facts": ctx.memory.fact_count if ctx.memory else 0,
+        "selected_facts": len(facts_used),
+        "facts_used": facts_used,
     }
 
 

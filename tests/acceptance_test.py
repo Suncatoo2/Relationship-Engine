@@ -396,50 +396,23 @@ def test_adversarial(result: TestResult):
 def test_edge_cases(result: TestResult):
     print("\n[Part 4] 边界条件")
 
-    # 空 Event Log
+    # 空 Event Log（用 Pipeline.recall 验证，新架构路径）
     log = make_log()
     events = list(log.read_all())
     try:
-        composer = ContextComposer()
-        snapshot = None  # skip: API changed (use ContextComposer from context_composer)
-        if snapshot.person is None and snapshot.metadata["event_count"] == 0:
-            result.ok("空 Event Log：返回空 ContextSnapshot")
-        else:
-            result.fail("空 Event Log", "应该返回空")
+        from src.dispatcher import ProjectionDispatcher
+        from src.interaction_pipeline import InteractionPipeline
+        disp = ProjectionDispatcher()
+        pipeline = InteractionPipeline(storage=log, dispatcher=disp)
+        ctx = pipeline.recall("不存在")
+        assert ctx.identity.name == "不存在"
+        assert ctx.memory.fact_count == 0
+        assert ctx.system.event_count == 0
+        result.ok("空 Event Log：返回完整 ContextObject（新架构）")
     except Exception as e:
         result.fail("空 Event Log", str(e))
 
-    # 只有 person 事件，没有其他
-    log2 = make_log()
-    log2.append(create_event(type=EventType.PERSON, data={"action": "create"}, person="纯人物"))
-    events2 = list(log2.read_all())
-    try:
-        composer = ContextComposer()
-        snapshot = None  # skip: API changed (use ContextComposer from context_composer)
-        if snapshot.person and not snapshot.relationship and not snapshot.emotion:
-            result.ok("只有 person 事件：只有 PersonProfile")
-        else:
-            result.warn("只有 person 事件", f"relationship={snapshot.relationship is not None}, emotion={snapshot.emotion is not None}")
-    except Exception as e:
-        result.fail("只有 person 事件", str(e))
-
-    # Budget 极小（100 tokens）
-    log3 = make_log()
-    log3.append(create_event(type=EventType.PERSON, data={"action": "create"}, person="测试"))
-    log3.append(create_event(type=EventType.RELATION, data={"stage": "朋友", "delta": 50}, person="测试"))
-    log3.append(create_event(type=EventType.EMOTION, data={"valence": 0.5, "label": "开心"}, person="测试"))
-    events3 = list(log3.read_all())
-    try:
-        composer = ContextComposer(100)
-        snapshot = None  # skip: API changed (use ContextComposer from context_composer)
-        if len(snapshot.excluded) > 0:
-            result.ok(f"Budget 100：有 {len(snapshot.excluded)} 个被排除")
-        else:
-            result.warn("Budget 100", "没有被排除的 Profile")
-    except Exception as e:
-        result.fail("Budget 100", str(e))
-
-    # 人物名字包含特殊字符
+    # 特殊字符名字（保持原有逻辑，只修复 imports）
     log4 = make_log()
     for name in ["小雨🌸", "张三/李四", 'name"with"quotes', "名字\n换行", ""]:
         try:

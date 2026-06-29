@@ -7,187 +7,241 @@
 
 ## 1. 项目身份
 
-- **产品名**: Relationship OS
-- **仓库**: https://github.com/Suncatoo2/Relationship-Engine
-- **核心理念**: 创造一个能够和人一起经历时间的 AI
-- **核心架构**: Everything is Event, Everything else is Projection
-- **当前版本**: v0.5-context-filled (Development Milestone)
-- **下一版本**: v0.4.0-infrastructure (Architecture Release)
-
----
-
-## 2. 已完成工作
-
-### 2.1 架构设计
-
-| 文档 | 位置 |
-|------|------|
-| 项目 Vision | `docs/VISION.md` |
-| 项目 Roadmap | `docs/ROADMAP.md` |
-| 架构原则 (7 Principles) | `docs/architecture/ARCHITECTURE_PRINCIPLES.md` |
-| 架构决策记录 (6 ADR) | `docs/architecture/ARCHITECTURE_DECISIONS.md` |
-| Pipeline Architecture | `docs/architecture/01_pipeline_architecture.md` |
-| Interaction Pipeline | `docs/architecture/INTERACTION_PIPELINE.md` |
-| Storage Abstraction | `docs/architecture/STORAGE_ABSTRACTION.md` |
-| Projection Snapshot | `docs/architecture/PROJECTION_SNAPSHOT.md` |
-| Memory Lifecycle | `docs/architecture/MEMORY_LIFECYCLE.md` |
-| Refactor Roadmap | `docs/architecture/REFACTOR_ROADMAP.md` |
-| Step 4 Design | `docs/architecture/STEP4_DESIGN.md` |
-
-### 2.2 已完成代码
-
-| 功能 | 位置 | 状态 |
-|------|------|------|
-| **Pipeline**（37 行，只做协调） | `src/interaction_pipeline.py` | ✅ |
-| **Dispatcher**（registry 模式） | `src/dispatcher.py` | ✅ |
-| **Storage**（ABC + JSONLStorage） | `src/storage.py` | ✅ |
-| **ContextComposer**（5 Projections → ContextObject） | `src/context_composer.py` | ✅ |
-| **MemoryReasoner**（summary + highlights） | `src/memory_reasoner.py` | ✅ |
-| **Event Schema**（version/occurred_at/recorded_at） | `src/event_types.py` | ✅ |
-| **ContextObject**（4+2 blocks + version check） | `src/protocol.py` | ✅ |
-| 8 个 Projection | `src/projections/` | ✅ |
-| web_server（接入 Pipeline） | `src/web_server.py` | ✅ |
-| mcp_server（未接入 Pipeline） | `src/mcp_server.py` | ❌ |
-
-### 2.3 测试
-
-| 类型 | 数量 | 状态 |
-|------|------|------|
-| 单元测试 | 294 | ✅ |
-| Memory Test Suite | 32 | ⚠️ 需适配新 API |
-| 验收测试 | 47 | ⚠️ 需适配新 API |
-| Protocol 测试 | 10 | ✅ |
-
-### 2.4 Git 状态
-
 ```
-Development Milestones: v0.3-stable, v0.4-pipeline, v0.5-context-filled
-Architecture Releases:  待打 v0.4.0-infrastructure
-分支: main
-待推送: 网络恢复后 push origin main --tags
+产品名:        Relationship OS
+仓库:          https://github.com/Suncatoo2/Relationship-Engine
+核心理念:      创造一个能够和人一起经历时间的 AI
+核心架构:      Everything is Event, Everything else is Projection
+
+Architecture Version : v0.8 (Stable)
+Implementation Version : v0.4 (In Progress)
+
+版本体系: Architecture–Implementation Dual Lifecycle Versioning
+          架构有自己的演进速度，实现有自己的开发速度
 ```
 
 ---
 
-## 3. 7 条架构原则（不可违反）
+## 2. 架构全景
 
-1. **Engine 永远不思考** — Engine 是确定性管道，不做推理/猜情绪
-2. **LLM 永远负责推理** — 理解/判断/提取事实全部是 LLM 的事
-3. **Projection 必须纯函数** — `project(events) → Profile (frozen)`, 无状态
-4. **Storage 可以替换** — 业务代码不直接读写文件，走 Storage 接口
-5. **Context Object 是唯一输出** — Memory Engine 输出结构化 Object，非文本
-6. **Snapshot 只是缓存** — 不替 Event Log，可从 Event Log 重建
-7. **Event 永远不可修改** — append-only, 算错了就重新 replay
-
----
-
-## 4. 6 条 ADR（已经决定，不要重新讨论）
-
-1. **ADR-001**: Everything is Event
-2. **ADR-002**: Projection 必须 Stateless + Immutable
-3. **ADR-003**: Engine never competes with LLM for thinking
-4. **ADR-004**: Storage 必须抽象
-5. **ADR-005**: 高层只有一个入口 — publish_interaction()
-6. **ADR-006**: Pipeline 铁律 — 只有 Pipeline 可以访问 Event Store
-
----
-
-## 5. 架构铁律（Phase 1 确立，不可违反）
-
-1. **架构冻结**: 不再新增核心抽象，新想法进 ROADMAP 或 ADR
-2. **ADR First**: 涉及架构调整时先写 ADR 再改代码
-3. **IO 隔离**: Pipeline 不直接操作文件或数据库
-4. **Projection 铁律**: 任何 Projection 都不能主动读 Event Store
-5. **Pipeline 不超 150 行**: 只做协调，不负责实现
-
----
-
-## 6. 当前数据流
+### 12 条架构原则
 
 ```
-用户输入
+ 1. Engine 永远不思考
+ 2. LLM 永远负责推理
+ 3. Projection 必须纯函数
+ 4. Storage 可以替换
+ 5. Context Object 是唯一输出
+ 6. Snapshot 只是缓存
+ 7. Event 永远不可修改
+ 8. Engine Detects, LLM Explains
+ 9. Identity-Aware, Authentication-Agnostic
+10. Engine Emits Facts, Never Narratives
+11. Architecture First, Implementation Incrementally
+12. Future Complexity, Present Simplicity
+```
+
+### 11 个 ADR
+
+```
+ADR-001  Everything is Event
+ADR-002  Projection Stateless + Immutable
+ADR-003  Engine never competes with LLM
+ADR-004  Storage 抽象
+ADR-005  publish_interaction() 唯一入口
+ADR-006  Pipeline 铁律 + Event Schema
+ADR-007  Engine Detects, LLM Explains
+ADR-008  Interaction Philosophy (6 principles)
+ADR-009  Memory Retrieval Policy
+ADR-010  PipelineResponse Protocol
+ADR-011  Architecture Evolution Policy
+```
+
+### 6 条交互哲学
+
+```
+1. Memory should be demonstrated, never announced.
+2. Memory should feel acknowledged, not announced.
+3. Show, don't tell.
+4. Suggestions are intents, not commands.
+5. Engine outputs facts, not derivations.
+6. PromptAdapter outputs constraints, not prose.
+```
+
+### Architecture Manifesto
+
+> Relationship OS is not a memory library — it is an AI interaction operating system. The Engine owns facts and decisions; the LLM owns expression. Every new capability must preserve this separation.
+
+---
+
+## 3. 当前数据流
+
+```
+用户输入 (Interaction)
     │
     ▼
-InteractionPipeline.publish(interaction)   ← 唯一写入口
+InteractionPipeline.publish()          ← 唯一写入口
     │
-    ├── decompose(interaction) → [Event]
-    ├── Storage.append(event) × N
-    └── Dispatcher.dispatch(event) × N
+    ├── Storage.append(event)          ← 不可变 Event Log (data/{user_id}/events.jsonl)
+    └── Dispatcher.dispatch(event)     ← registry 模式路由
             │
-            └── registry[event.type] → [Projection.apply(event)]
-
-Pipeline.recall(person)                    ← 唯一读出口
-    │
-    ├── Storage.read_all()
-    ├── Dispatcher.project_all(events)
-    └── ContextComposer.compose(person, events, profiles)
+            ▼
+Projection Layer (6 个)
+  Fact / Person / Relationship / Time / Emotion / Growth
             │
-            └── ContextObject JSON
+            ▼
+ContextComposer
+  ├── MemoryReasoner (summary)
+  ├── Suggestions (Engine Detects)
+  └── ContextObject (frozen API Contract, 4+2+1 blocks + suggestions)
+            │
+            ▼
+PromptAdapter (Claude / GPT / DeepSeek)
+            │
+            ▼
+LLM / 离线回复
 ```
 
 ---
 
-## 7. v0.4.0-infrastructure 交付清单
+## 4. 已完成架构设计（Architecture Milestones）
 
-| # | 交付物 | 状态 |
-|---|--------|------|
-| 1 | Pipeline（publish/recall） | ✅ |
-| 2 | Dispatcher（registry 模式） | ✅ |
-| 3 | BaseStorage + JSONLStorage（含 read_since） | ⚠️ read_since 待加 |
-| 4 | Event Schema（version/occurred_at/recorded_at） | ✅ |
-| 5 | ContextObject（冻结 + GoalsBlock） | ⚠️ GoalsBlock 待加 |
-| 6 | Snapshot 基础接口 | ✅ |
-| 7 | web_server 接入 Pipeline | ✅ |
-| 8 | mcp_server 接入 Pipeline（读写统一） | ❌ 待做 |
-| 9 | 测试体系升级 | ❌ 待做 |
+| 版本 | 设计内容 | 状态 |
+|------|---------|------|
+| v0.4 | Infrastructure — Pipeline + Dispatcher + Storage + Event Schema | ✅ |
+| v0.5 | Memory Core — ContextComposer + Reasoner + Golden Context + Goals | ✅ |
+| v0.6 | Output Layer — PromptAdapter + Lifecycle + Momentum + Suggestions | ✅ |
+| v0.7 | Performance — SnapshotManager + Incremental + Recovery | ✅ |
+| v0.8 | PipelineResponse + RecallMetadata + Evolution Policy + Manifesto | ✅ |
 
-### 验收标准
+---
+
+## 5. 已完成代码实现（Implementation Status）
+
+### 核心模块全部存在
+
+| 模块 | 文件 | 行数 | 状态 |
+|------|------|------|------|
+| Pipeline | `src/interaction_pipeline.py` | ~200 | ✅ |
+| Dispatcher | `src/dispatcher.py` | ~100 | ✅ |
+| Storage | `src/storage.py` | ~140 | ✅ |
+| ContextComposer | `src/context_composer.py` | ~250 | ✅ |
+| MemoryReasoner | `src/memory_reasoner.py` | ~90 | ✅ |
+| PromptAdapter | `src/prompt_adapter.py` | ~170 | ✅ |
+| SnapshotManager | `src/snapshot_manager.py` | ~120 | ✅ |
+| ContextObject | `src/protocol.py` | ~200 | ✅ Frozen |
+| 6 Projections | `src/projections/` | — | ✅ |
+
+### 主链路已接通
 
 ```
-Write: LLM → publish_interaction() → Pipeline → Storage → Dispatcher
-Read:  LLM → get_context(person)   → Pipeline → ContextObject JSON
-红线:  LLM 不再感知 Storage 和 EventLog 的存在
+✅ web_server → pipeline.publish() — 零直接 append
+✅ web_server → memory_engine.recall() → PromptAdapter → 回复文本
+✅ memory_engine → PromptAdapter.build(ctx) — 不再硬编码 prompt_text
+✅ Snapshot 自动保存 — 每 100 次写入触发
+✅ mcp_server → Pipeline — 读写统一
+```
+
+### 测试
+
+```
+344 pytest passed（不含已跳过文件）
+315 pytest passed（排除 deprecated 文件后）
+acceptance_test: 44/47 passed（3 fail = 旧 ContextComposer API）
 ```
 
 ---
 
-## 8. 伏笔 & 技术债（已确认，按优先级排列）
+## 6. 未完成工作（明天继续）
 
-| # | 伏笔 | 建议时机 |
-|---|------|---------|
-| 1 | mcp_server 接入 Pipeline | v0.4.0 |
-| 2 | JSONLStorage read_since | v0.4.0 |
-| 3 | ContextObject 加 GoalsBlock | v0.4.0 |
-| 4 | memory_summary 填充 | v0.5.0 |
-| 5 | category="goal" 验证 | v0.5.0 |
-| 6 | 7 个 Projection 补 apply()/snapshot() | v0.5.0 |
-| 7 | PromptAdapter 抽象接口 | v0.6.0 |
-| 8 | Snapshot 持久化 + Incremental | v0.7.0 |
-| 9 | Goal Projection 独立拆分 | v0.6.0+ |
-| 10 | 异步 Dispatcher | v0.7.0+ |
-| 11 | Outbox Pattern | v0.7.0+ |
+### 优先级 P0（必须做）
+
+| # | 任务 | 说明 |
+|---|------|------|
+| 1 | **acceptance_test.py 修复最后 3 个失败** | `composer.compose()` 旧 API → 需要适配新 ContextComposer |
+| 2 | **test_context_composer.py 适配** | 全部使用旧 ContextComposer API，需要迁移 |
+| 3 | **test_prompt_builder.py 替代** | 用 test_prompt_adapter.py 替代（已存在 20 tests） |
+| 4 | **test_memory_suite.py 恢复** | 32 个测试依赖启动 web_server 的完整环境 |
+
+### 优先级 P1（应该做）
+
+| # | 任务 | 说明 |
+|---|------|------|
+| 5 | **`event_log.py` 删除** | 零业务引用，safe to remove |
+| 6 | **`memory_selector.py` FactItem 去重** | 与 protocol.py 的 FactItem 冲突 |
+| 7 | **`context.py` 删除** | deprecated，换成 context_composer.py（但需先修 acceptance_test） |
+| 8 | **`prompt_builder.py` 删除** | deprecated，换成 prompt_adapter.py（但需先修 acceptance_test） |
+
+### 优先级 P2（可以推迟）
+
+| # | 任务 | 说明 |
+|---|------|------|
+| 9 | PromptAdapter 语气阶梯接入 web_server | `_tone_for_stage()` 代码存在但离线模式没用 |
+| 10 | Emotion Momentum + Lifecycle 在 UI 展示 | 计算了但没人看 |
+| 11 | PipelineResponse + RecallMetadata 实现 | ADR-010 设计了但代码没写 |
+| 12 | `data/` 目录 cleanup | 旧 events.jsonl 是旧格式 `id`/`timestamp`，新格式是 `event_id`/`occurred_at` |
 
 ---
 
-## 9. 接手后第一件事
+## 7. 今天犯过的错 & 教训
+
+| 错误 | 修复 | 教训 |
+|------|------|------|
+| acceptance_test.py 用旧 `EventLog` → NameError | 全局替换为 `JSONLStorage` | 全局重构时先 grep 所有引用 |
+| `context.py` incomplete edit → SyntaxError | 重读文件，用 exact string 再替换 | Edit 工具要求 old_string 精确匹配 |
+| `person` 参数不传 → Alice/Bob 数据污染 | Dispatcher.project_all() 加 `person=` 参数 | Projection 的 `project(events, person="")` 必须传 |
+| memory_engine 硬编码 prompt_text → PromptAdapter 未接入 | 替换为 `self._adapter.build(ctx)` | 新模块要接上调用方，否则是 dead code |
+| acceptance_test `budget_limit` 参数 → TypeError | 新 ContextComposer 没有此参数，skip 旧代码 | 旧 API 迁移需要文档记录 |
+
+---
+
+## 8. 关键文件索引
+
+| 文件 | 作用 | 状态 |
+|------|------|------|
+| `src/interaction_pipeline.py` | Pipeline 唯一入口 | ✅ Thin (37 lines core) |
+| `src/dispatcher.py` | Projection 路由 | ✅ Registry pattern |
+| `src/storage.py` | Storage ABC + JSONLStorage | ✅ read_since 已加 |
+| `src/context_composer.py` | Projections → ContextObject | ✅ 6 blocks |
+| `src/memory_engine.py` | PromptAdapter 调用层 | ✅ Wired |
+| `src/prompt_adapter.py` | ContextObject → Prompt | ✅ 3 adapters |
+| `src/snapshot_manager.py` | Snapshot save/load | ✅ Auto save wired |
+| `src/protocol.py` | ContextObject spec | ✅ Frozen |
+| `docs/architecture/ARCHITECTURE_PRINCIPLES.md` | 12 条原则 | ✅ |
+| `docs/architecture/ARCHITECTURE_DECISIONS.md` | 11 个 ADR | ✅ |
+| `docs/architecture/INTERACTION_PHILOSOPHY.md` | 6 条交互哲学 | ✅ |
+| `docs/architecture/ADR-010-pipeline-response.md` | PipelineResponse 设计 | ✅ |
+| `docs/architecture/ADR-011-evolution-policy.md` | 演进策略 | ✅ |
+| `docs/ROADMAP.md` | 路线图 | ✅ Updated |
+| `docs/MEMORY_FLOW.md` | 数据流图 | ✅ |
+| `examples/alice_demo.py` | 端到端演示 | ✅ |
+
+---
+
+## 9. 明天第一件事
 
 ```bash
-# 1. 读架构文件
-cat docs/ROADMAP.md
-cat docs/architecture/ARCHITECTURE_DECISIONS.md
+# 1. 验证当前状态
+cd Relationship-Engine
+python -m pytest tests/ --ignore=tests/test_memory_suite.py --ignore=tests/test_context_composer.py --ignore=tests/test_prompt_builder.py -q
+# 应返回: 315 passed
 
-# 2. 跑测试
-python -m pytest tests/ --ignore=tests/acceptance_test.py --ignore=tests/test_memory_suite.py -q
+# 2. Architecture Freeze 仍然生效
+#    不再新增 ADR。只写代码。
 
-# 3. 验证 Pipeline 能运行
-python -c "from src.interaction_pipeline import InteractionPipeline; print('OK')"
+# 3. 修复 P0 项（按顺序）:
+#    a. acceptance_test.py 最后 3 个失败
+#    b. test_context_composer.py 适配
+#    c. test_memory_suite.py 恢复
 
-# 4. 继续 v0.4.0-infrastructure
-#   下一步: mcp_server 接入 Pipeline（读写统一）
+# 4. 完成后打 tag:
+#    git tag v0.4.0-implementation-complete
+#    git push origin main --tags
 ```
 
 ---
 
 *Handoff 更新时间: 2026-06-28*
-*最后 tag: v0.5-context-filled (Development Milestone)*
-*下一版本: v0.4.0-infrastructure (Architecture Release)*
+*Architecture Version: v0.8 Stable*
+*Implementation Version: v0.4 → v0.6 Wired*
+*最后 commit: 7e7a73d (integration sprint)*
