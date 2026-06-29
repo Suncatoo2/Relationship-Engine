@@ -129,10 +129,25 @@ class RelationshipProjection(Projection):
     从 relation + chat + milestone + person 事件流重建所有关系状态。
     """
 
+    def __init__(self):
+        self._cache: list = []  # apply() 累积的 events，供 snapshot() 用
+
+    def apply(self, event: Event):
+        """增量模式：缓存单个 event"""
+        if event.person and event.type in ("person", "relation", "chat", "milestone"):
+            self._cache.append(event)
+
+    def snapshot(self) -> dict:
+        """返回当前缓存状态的序列化快照"""
+        return {
+            name: p.to_dict()
+            for name, p in self.project(self._cache).items()
+        }
+
     def project(self, events) -> dict[str, RelationshipProfile]:
         """输入事件流，输出 {人名: RelationshipProfile}"""
         profiles: dict[str, RelationshipProfile] = {}
-        event_list = list(events)  # 需要多次遍历
+        event_list = list(events)
 
         # Pass 1: 从 person 事件读取关系类型标签
         for e in event_list:

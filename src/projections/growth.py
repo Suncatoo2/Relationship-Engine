@@ -118,18 +118,30 @@ CATEGORY_TO_DIRECTION = {
 class GrowthProjection(Projection):
     """成长时间线投影"""
 
+    def __init__(self):
+        self._cache: list = []
+
+    def apply(self, event: Event):
+        """增量模式：缓存单个 growth event"""
+        if event.type == EventType.GROWTH and event.person:
+            self._cache.append(event)
+
+    def snapshot(self) -> dict:
+        """返回当前缓存状态的序列化快照"""
+        return {
+            name: p.to_dict()
+            for name, p in self.project(self._cache).items()
+        }
+
     def project(self, events) -> dict[str, GrowthProfile]:
         profiles: dict[str, GrowthProfile] = {}
         event_list = list(events)
-
         by_person: dict[str, list[Event]] = {}
         for e in event_list:
             if e.type == EventType.GROWTH and e.person:
                 by_person.setdefault(e.person, []).append(e)
-
         for name, growth_events in by_person.items():
             profiles[name] = self._build_profile(name, growth_events, len(event_list))
-
         return profiles
 
     def project_one(self, events, name: str) -> GrowthProfile | None:

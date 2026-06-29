@@ -67,10 +67,28 @@ class PersonProjection(Projection):
     """人物画像投影
 
     从 person + fact 事件流重建所有人物画像。
+
+    两种模式:
+      批量: project(events) → dict[str, PersonProfile]
+      增量: apply(event) 维护内部缓存，snapshot() 返回当前状态
     """
 
+    def __init__(self):
+        self._cache: dict[str, PersonProfile] = {}
+
+    def apply(self, event: Event):
+        """增量模式：处理单个 person/fact 事件"""
+        if event.type == EventType.PERSON:
+            self._apply_person_event(self._cache, event)
+        elif event.type == EventType.FACT:
+            self._apply_fact_event(self._cache, event)
+
+    def snapshot(self) -> dict:
+        """返回当前缓存状态的序列化快照"""
+        return {name: p.to_dict() for name, p in self._cache.items()}
+
     def project(self, events) -> dict[str, PersonProfile]:
-        """输入事件流，输出 {人名: PersonProfile}"""
+        """输入事件流，输出 {人名: PersonProfile}（批量模式）"""
         profiles: dict[str, PersonProfile] = {}
         event_list = list(events)
 

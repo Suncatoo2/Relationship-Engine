@@ -196,21 +196,32 @@ class TimeContextProfile:
 class TimeContextProjection(Projection):
     """时间感知投影"""
 
+    def __init__(self):
+        self._cache: list = []
+
+    def apply(self, event: Event):
+        """增量模式：缓存单个 event"""
+        if event.person and event.type in ("chat", "person", "milestone"):
+            self._cache.append(event)
+
+    def snapshot(self) -> dict:
+        """返回当前缓存状态的序列化快照"""
+        return {
+            name: p.to_dict()
+            for name, p in self.project(self._cache).items()
+        }
+
     def project(self, events) -> dict[str, TimeContextProfile]:
         profiles: dict[str, TimeContextProfile] = {}
         event_list = list(events)
-
-        # 按人物分组
         by_person: dict[str, list[Event]] = {}
         for e in event_list:
             if e.person:
                 if e.person not in by_person:
                     by_person[e.person] = []
                 by_person[e.person].append(e)
-
         for name, person_events in by_person.items():
             profiles[name] = self._build_profile(name, person_events)
-
         return profiles
 
     def project_one(self, events, name: str) -> TimeContextProfile | None:
