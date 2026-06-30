@@ -39,6 +39,7 @@ class FactItem:
     importance: int = 5
     source: str = "user_direct"
     status: str = "active"
+    created_at: str = ""           # ISO timestamp — used by RetrievalRanker for recency scoring
 
     def to_dict(self) -> dict:
         return {

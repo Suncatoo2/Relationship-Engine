@@ -23,6 +23,7 @@ from .protocol import ContextObject
 from .context_composer import ContextComposer
 from .snapshot_manager import SnapshotManager
 from .pipeline_response import PipelineResponse, RecallMetadata, Diagnostics
+from .retrieval_ranker import RetrievalRanker
 
 
 # ============================================================
@@ -196,6 +197,7 @@ class InteractionPipeline:
             enable_suggestions=enable_suggestions,
             enable_lifecycle=enable_lifecycle,
         )
+        self._ranker = RetrievalRanker()
         self._snapshot_mgr = SnapshotManager(data_dir)
 
         # Capability token: 注入 Storage，保证只有 Pipeline 能写入
@@ -232,11 +234,16 @@ class InteractionPipeline:
             self.dispatcher.dispatch(stored)
         return PublishResult(event_id=event_ids[0], derived_event_ids=event_ids)
 
-    def recall(self, person: str) -> PipelineResponse:
-        """唯一读出口：Storage → Projection → ContextObject
+    def recall(self, person: str, query: str = "", max_tokens: int = 6000) -> PipelineResponse:
+        """唯一读出口：Storage → Projection → Ranking → ContextObject
 
         每次 recall 填充完整的 metadata + diagnostics。
         调用方不需要学新接口——PipelineResponse 的形状从 Phase A 就锁定了。
+
+        Args:
+            person: 人物名称
+            query: 查询文本（空字符串 = 无关键词 boost，靠重要性+新鲜度）
+            max_tokens: token 预算上限（默认 6000）
         """
         started_at = time.perf_counter()
         request_id = str(uuid.uuid4())
@@ -254,12 +261,22 @@ class InteractionPipeline:
         profiles = self.dispatcher.project_all(all_events, person=person)
         proj_timing["project_all_total"] = (time.perf_counter() - t0) * 1000
 
-        # 3. 组装上下文
+        # 3. 排名（query-aware retrieval）
         t0 = time.perf_counter()
-        ctx = self._composer.compose(person, person_events, profiles)
+        pre_ranked = self._composer.extract_facts(profiles, person)
+        ranked = self._ranker.rank(
+            pre_ranked, query=query, max_tokens=max_tokens
+        )
+        ranker_stats = self._ranker.stats
+        proj_timing["ranking"] = (time.perf_counter() - t0) * 1000
+
+        # 4. 组装上下文（传入排名后的 facts）
+        t0 = time.perf_counter()
+        ctx = self._composer.compose(person, person_events, profiles,
+                                     pre_ranked_facts=ranked)
         proj_timing["compose"] = (time.perf_counter() - t0) * 1000
 
-        # 4. 构建 metadata
+        # 5. 构建 metadata
         persons_in_events = set(e.person for e in all_events if e.person)
         metadata = RecallMetadata(
             version=1,
@@ -268,7 +285,7 @@ class InteractionPipeline:
             started_at=now_iso,
             request_id=request_id,
             trace_id=trace_id,
-            recall_strategy="full_replay",
+            recall_strategy="ranked_query_aware",
             scoring_method="weighted_sum",
             cache_hit=False,
             snapshot_used=False,
@@ -319,6 +336,7 @@ class InteractionPipeline:
             dead_letter_count=len(dead_letters),
             engine_version="v1.0",
             engine_time=now_iso,
+            ranker_stats=ranker_stats,
         )
 
         return PipelineResponse(
@@ -337,9 +355,10 @@ class InteractionPipeline:
     #  v0.7: Incremental Recall + Snapshot
     # ================================================================
 
-    def recall_incremental(self, person: str) -> PipelineResponse:
+    def recall_incremental(self, person: str, query: str = "",
+                           max_tokens: int = 6000) -> PipelineResponse:
         """增量召回：当前数据量下等同于全量 recall"""
-        return self.recall(person)
+        return self.recall(person, query=query, max_tokens=max_tokens)
 
     def save_snapshots(self) -> str:
         """保存所有 Projection 快照"""

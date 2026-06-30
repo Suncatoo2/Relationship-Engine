@@ -83,6 +83,9 @@ class Diagnostics:
     # Dead letter count from dispatcher
     dead_letter_count: int = 0
 
+    # Retrieval ranking stats (v0.8+)
+    ranker_stats: dict = field(default_factory=dict)
+
     # Version info
     engine_version: str = "v1.0"
     engine_time: str = ""
@@ -104,6 +107,7 @@ class Diagnostics:
             "dead_letter_count": self.dead_letter_count,
             "engine_version": self.engine_version,
             "engine_time": self.engine_time,
+            "ranker_stats": self.ranker_stats,
         }
 
 

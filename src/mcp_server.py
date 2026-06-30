@@ -237,7 +237,7 @@ async def get_context(
         max_tokens: token 预算上限
         prompt_style: 输出格式（default/gpt/claude/deepseek）
     """
-    ctx = _pipeline.recall(person_name).context
+    ctx = pipeline.recall(person_name, query="", max_tokens=max_tokens).context
     return ctx.to_json()
 
 
@@ -295,7 +295,7 @@ async def get_reminders(person_name: str = "") -> str:
     Args:
         person_name: 人名（可选）
     """
-    ctx = _pipeline.recall(person_name).context if person_name else None
+    ctx = pipeline.recall(person_name, query="", max_tokens=max_tokens).context if person_name else None
     if ctx:
         d = ctx.to_dict()
         return json.dumps(d.get("time", {}), ensure_ascii=False, indent=2)

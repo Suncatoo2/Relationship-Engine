@@ -16,6 +16,7 @@ Refactor Triggers (满足任一条件则抽出独立 Engine):
 """
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from .protocol import (
     ContextObject, IdentityBlock, MemoryBlock, FactItem,
@@ -23,6 +24,9 @@ from .protocol import (
 )
 from .memory_reasoner import MemoryReasoner
 from .boundary_policy import BoundaryPolicy
+
+if TYPE_CHECKING:
+    from .retrieval_ranker import ScoredFact
 
 
 # ============================================================
@@ -219,16 +223,20 @@ class ContextComposer:
         self.enable_lifecycle = enable_lifecycle
 
     def compose(self, person: str, person_events: list,
-                profiles: dict[str, dict]) -> ContextObject:
+                profiles: dict[str, dict],
+                pre_ranked_facts: list | None = None) -> ContextObject:
         """组装 ContextObject，填充所有 Block
 
         Args:
             person: 人物名称
             person_events: 该人物的事件列表（用于 metadata）
             profiles: Dispatcher.project_all() 的输出
+            pre_ranked_facts: 可选，RetrievalRanker 排名后的 ScoredFact 列表。
+                              如果提供，MemoryBlock 使用这些 facts（不重新排名）。
+                              如果为 None，从 profiles 中提取所有 facts。
         """
         # 1. 先组装基础 blocks
-        memory = self._memory(profiles, person)
+        memory = self._memory(profiles, person, pre_ranked_facts)
         relationship = self._relationship(profiles, person)
         time = self._time(profiles, person)
         emotion = self._emotion(profiles, person)
@@ -266,15 +274,66 @@ class ContextComposer:
             last_consumed_event_id=person_events[-1].event_id if person_events else "",
         )
 
-    # ---- 4 must blocks ----
+    # ---- Fact extraction for RetrievalRanker ----
+
+    @staticmethod
+    def extract_facts(profiles: dict, person: str) -> list:
+        """Extract all facts from profiles for RetrievalRanker.
+
+        This is the seam between projection and ranking.
+        ContextComposer extracts facts, RetrievalRanker ranks them,
+        then compose() accepts the ranked list.
+
+        Returns:
+            list[FactItem] — all facts from FactProjection (unranked)
+        """
+        from .protocol import FactItem as PFI
+        all_facts = []
+        fact_state = profiles.get("FactProjection")
+        if fact_state is not None and hasattr(fact_state, "active"):
+            for _cat, f in fact_state.active.items():
+                item = PFI(
+                    content=f.content, category=f.category,
+                    confidence=f.confidence, importance=f.importance,
+                    source=f.source, status=f.status,
+                    created_at=f.created_at,
+                )
+                all_facts.append(item)
+
+        # 置信度动态调整
+        adjusted = _adjust_confidence(all_facts, fact_state)
+
+        # 知识边界注入
+        boundary = _compute_boundary(profiles, person)
+        if boundary:
+            adjusted.append(boundary)
+
+        return adjusted
 
     @staticmethod
     def _identity(person: str) -> IdentityBlock:
         return IdentityBlock(name=person)
 
     @staticmethod
-    def _memory(profiles: dict, person: str) -> MemoryBlock:
-        """FactProjection → MemoryBlock + Confidence Adjustment + Knowledge Boundary"""
+    def _memory(profiles: dict, person: str, pre_ranked: list | None = None) -> MemoryBlock:
+        """FactProjection → MemoryBlock + Confidence Adjustment + Knowledge Boundary
+
+        If pre_ranked is provided (list of ScoredFact), use those facts directly
+        instead of extracting from FactProjection. This is the RetrievalRanker path.
+        """
+        if pre_ranked is not None:
+            all_facts: list = []
+            for sf in pre_ranked:
+                f = sf.fact
+                item = FactItem(
+                    content=f.content, category=f.category,
+                    confidence=f.confidence, importance=f.importance,
+                    source=f.source, status=f.status,
+                    created_at=f.created_at,
+                )
+                all_facts.append(item)
+            return MemoryBlock(active_facts=all_facts, fact_count=len(all_facts))
+
         active_facts: list = []
         fact_state = profiles.get("FactProjection")
         all_facts = []

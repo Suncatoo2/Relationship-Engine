@@ -12,15 +12,13 @@
 > **Every release introduces a new capability, not a new feature.**
 
 ```
-Architecture Version : v0.8 (Stable)
-Implementation Version : v0.4 (In Progress)
+Engine Version : v1.0 (Frozen)
+Product Version : v0.8 (In Progress)
 ```
 
 Relationship-Engine 是一个基于 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 的关系管理引擎，为大语言模型提供长期记忆、人物画像、关系追踪、事件记录、情绪摘要和智能提醒能力。
 
-与传统 AI 的「一次对话，一次遗忘」不同，Relationship-Engine 希望让 AI 能够真正理解人与人的关系，并随着时间不断成长。
-
-无论是朋友、家人、同学、客户还是团队成员，AI 都能够持续记录重要信息、分析关系变化，并在未来的交流中主动利用这些记忆。
+与传统 AI 的「一次对话，一次遗忘」不同，Relationship-Engine 让 AI 能够真正理解人与人的关系，并随着时间不断成长。
 
 ---
 
@@ -33,6 +31,7 @@ Relationship-Engine 是一个基于 [Model Context Protocol (MCP)](https://model
 Relationship-Engine 希望成为 AI 的「**关系操作系统（Relationship OS）**」：
 
 - 🧠 **长期人物记忆**（Persistent Memory）
+- 🔍 **查询感知召回**（Query-Aware Recall）— 相关性排序 + token 预算
 - 👤 **自动构建人物画像**（Person Profile）
 - ❤️ **关系状态管理**（Relationship Tracking）
 - 💬 **对话历史分析**（Conversation Analysis）
@@ -56,17 +55,6 @@ AI 不应该只会回答：
 
 ---
 
-## 项目特点
-
-- ✅ 基于 MCP 标准协议
-- ✅ 支持 Claude、GPT、DeepSeek、Qwen 等模型
-- ✅ 支持 stdio 与 HTTP 两种运行方式
-- ✅ 模块化设计，方便扩展
-- ✅ 面向长期记忆，而非单轮对话
-- ✅ 可作为任何 AI Agent 的关系管理层
-
----
-
 ## 架构
 
 ```
@@ -75,18 +63,22 @@ AI 不应该只会回答：
       ▼
 Pipeline.publish()          ← 唯一写入口
       │
-      ├── Storage.append(event)  ← 不可变 Event Log
+      ├── Storage.append(event)  ← 不可变 Event Log (WAL + atomic write)
       └── Dispatcher.dispatch()  ← registry 模式路由
               │
               ▼
-Projection Layer (6 个)
+Projection Layer (9 个)
   Fact / Person / Relationship / Time / Emotion / Growth
+  Conversation / Reminder / Profile
+              │
+              ▼
+RetrievalRanker             ← query-aware ranking + token budgeting
               │
               ▼
 ContextComposer
   ├── MemoryReasoner (summary)
   ├── Suggestions (Engine Detects)
-  └── ContextObject (标准 JSON)
+  └── ContextObject (frozen JSON contract)
               │
               ▼
 PromptAdapter
@@ -94,14 +86,35 @@ PromptAdapter
   └── 行为约束（Constraint, 不是 Prose）
               │
               ▼
-LLM → 回复
+LLM → 回复 → Pipeline.publish() ← 闭环
 ```
 
-**10 条架构原则** · **9 个 ADR** · **6 条交互哲学**
+**15 条架构原则** · **15 个 ADR** · **10 种事件类型**
 
 核心设计原则：**Everything is Event, Everything else is Projection.**
 
 详见 [MEMORY_FLOW.md](docs/MEMORY_FLOW.md)
+
+---
+
+## Product 1.0 Roadmap
+
+| Step | 名称 | 输入 | 输出 | 状态 |
+|------|------|------|------|------|
+| 1 | ProfileProjection | person + profile events | 长期关系档案（9th Projection） | ✅ |
+| 2 | Memory Retrieval & Ranking | query + facts + max_tokens | 排序后的 ScoredFact 列表 | ✅ |
+| 3 | Cross-Projection Reasoning | 9 projections | 跨投影关联洞察 | 📋 |
+| 4 | Closed Feedback Loop | LLM 输出 → publish → recall | 状态自动更新 | 📋 |
+| 5 | Self Evolution | 用户反馈数据 | 自适应优化 | ⏳ Design Only |
+
+### Engine 1.0（已冻结）
+
+- Event Sourcing (JSONL + WAL + atomic write + crash recovery)
+- 9 Projections (all with apply/snapshot incremental interface)
+- Pipeline (single entry/exit point, capability guard)
+- PipelineResponse (context/metadata/diagnostics)
+- Observability (dispatch timing, health, dead letters)
+- 15 ADRs documented and enforced
 
 ---
 
@@ -123,7 +136,7 @@ LLM → 回复
 
 | Tool | 说明 |
 |------|------|
-| `get_context` | 获取完整 AI 上下文（最核心） |
+| `get_context` | 获取完整 AI 上下文（支持 query + max_tokens） |
 | `get_person` | 获取人物画像 |
 | `get_events` | 获取原始事件流 |
 | `get_reminders` | 获取智能提醒 |
@@ -134,22 +147,17 @@ LLM → 回复
 ## 快速开始
 
 ```bash
-# 安装依赖
 pip install -e .
-
-# 配置（可选，不配置 LLM 也能用 Tools）
 cp .env.example .env
 
-# 本地模式（stdio，配合 Claude Desktop 等）
+# stdio 模式（Claude Desktop 等）
 python -m src.main
 
-# 远程模式（HTTP，部署到服务器，任何 AI 可调用）
+# HTTP 模式（部署到服务器）
 python -m src.main --http
 ```
 
 ### Claude Desktop 配置
-
-在 `claude_desktop_config.json` 中添加：
 
 ```json
 {
@@ -163,16 +171,6 @@ python -m src.main --http
 }
 ```
 
-### 部署到阿里云
-
-```bash
-git clone https://github.com/Suncatoo2/Relationship-Engine.git
-cd Relationship-Engine
-pip install -e .
-cp .env.example .env
-python -m src.main --http
-```
-
 ---
 
 ## 项目结构
@@ -180,24 +178,25 @@ python -m src.main --http
 ```
 Relationship-Engine/
 ├── src/
-│   ├── event_types.py           # Event 数据结构 + 枚举
-│   ├── event_log.py             # append-only JSONL（底层实现）
-│   ├── storage.py               # Storage 抽象接口 + JSONLStorage
-│   ├── interaction_pipeline.py  # Pipeline（37 行，只做协调）
-│   ├── dispatcher.py            # Dispatcher（registry 模式）
-│   ├── context_composer.py      # ContextComposer（Projections → ContextObject）
-│   ├── memory_engine.py         # Memory Engine（适配层）
-│   ├── memory_reasoner.py       # MemoryReasoner（summary + highlights）
-│   ├── prompt_adapter.py        # PromptAdapter（Claude/GPT/DeepSeek）
-│   ├── snapshot_manager.py      # SnapshotManager（save/load/verify）
+│   ├── event_types.py           # Event 数据结构 + 10 types
+│   ├── storage.py               # Storage ABC + JSONLStorage (WAL + capability guard)
+│   ├── interaction_pipeline.py  # Pipeline (唯一入口, ~370 行)
+│   ├── dispatcher.py            # Dispatcher (registry + observability)
+│   ├── retrieval_ranker.py      # RetrievalRanker (query-aware + token budget)
+│   ├── context_composer.py      # ContextComposer (Projections → ContextObject)
+│   ├── protocol.py              # ContextObject + 9 Blocks (frozen API Contract)
+│   ├── pipeline_response.py     # PipelineResponse (context/metadata/diagnostics)
+│   ├── memory_reasoner.py       # MemoryReasoner (summary + highlights)
+│   ├── snapshot_manager.py      # SnapshotManager (save/load/verify)
+│   ├── prompt_adapter.py        # PromptAdapter (Claude/GPT/DeepSeek)
 │   ├── provider.py              # LLM Provider Interface
-│   ├── protocol.py              # ContextObject（frozen API Contract）
-│   ├── web_server.py            # Web Server（SSE 流式 + 会话管理）
-│   ├── mcp_server.py            # MCP Server（接入 Pipeline）
+│   ├── boundary_policy.py       # BoundaryPolicy (knowledge boundary injection)
+│   ├── web_server.py            # Web Server (SSE 流式 + 会话管理)
+│   ├── mcp_server.py            # MCP Server (接入 Pipeline)
 │   ├── main.py                  # 入口（--web / --http / stdio）
 │   ├── web/chat.html            # ChatGPT 风格聊天界面
-│   └── projections/             # Projection Layer（6 个）
-│       ├── base.py              # Projection 基类（apply + snapshot + info）
+│   └── projections/             # 9 Projections
+│       ├── base.py              # Projection 基类
 │       ├── fact_state.py        # FactProjection
 │       ├── person.py            # PersonProjection
 │       ├── relationship.py      # Relationship + Lifecycle
@@ -206,75 +205,35 @@ Relationship-Engine/
 │       ├── growth.py            # Growth
 │       ├── reminder.py          # Reminder
 │       ├── conversation.py      # Conversation
-│       ├── context.py           # Context Composer（旧版）
-│       └── prompt_builder.py    # Prompt Builder（旧版）
-├── tests/                       # 344 单元测试 + Golden + Regression
-│   └── golden/context_object.json
+│       └── profile.py           # Profile (1.0 Step 1)
+├── tests/                       # 447 tests (0.73s)
+│   ├── architecture/            # Architecture compliance tests
+│   └── golden/                  # Golden context output
 ├── examples/
 │   └── alice_demo.py            # 端到端演示
 ├── docs/
 │   ├── VISION.md                # 项目灵魂
-│   ├── ROADMAP.md               # 版本路线图
+│   ├── ROADMAP.md               # 产品路线图
 │   ├── HANDOFF.md               # 项目交接文档
 │   ├── MEMORY_FLOW.md           # 数据流全景图
 │   └── architecture/
-│       ├── ARCHITECTURE_PRINCIPLES.md   # 10 条原则
-│       ├── ARCHITECTURE_DECISIONS.md    # 9 个 ADR
-│       ├── INTERACTION_PHILOSOPHY.md    # 6 条交互哲学
-│       └── 01_pipeline_architecture.md  # Pipeline 架构设计
+│       └── ARCHITECTURE_DECISIONS.md  # 15 ADRs
 └── data/{user_id}/              # 多用户数据隔离
     └── events.jsonl
 ```
 
 ---
 
-## 版本
-
-本项目采用 Architecture–Implementation Dual Lifecycle Versioning（架构—实现双版本体系）。
-
-架构有自己的演进速度。实现有自己的开发速度。两者相互对应，但不要求同步完成。
-
-### Architecture Milestones
-
-| 版本 | 设计内容 | 状态 |
-|------|---------|------|
-| v0.4 | Protocol & Pipeline Design — Pipeline + Dispatcher + Storage + ADR 1-6 | ✅ |
-| v0.5 | Projection Ecosystem Design — ContextComposer + MemoryReasoner + Golden | ✅ |
-| v0.6 | Output Layer Design — PromptAdapter + Lifecycle + Momentum + Suggestions | ✅ |
-| v0.7 | Performance Design — SnapshotManager + Incremental + Recovery | ✅ |
-| v1.0 | Relationship OS Design | 🎯 |
-
-### Implementation Status
-
-| 版本 | 内容 | 状态 |
-|------|------|------|
-| v0.1 | 聊天（SSE 流式 + Event Log + ChatGPT 风格 UI） | ✅ |
-| v0.2 | Memory Engine（自动读取记忆 + Prompt Log + Debug） | ✅ |
-| v0.3 | 8 Projections + MCP Server + Context Composer + Provider | ✅ |
-| v0.3.99 | Architecture Review（10 份设计文档 + 7 Principles + 5 ADR） | ✅ |
-| v0.4 | Infrastructure — Pipeline + Dispatcher + Storage + Event Schema | 🚧 In Progress |
-| v0.5 | Memory Core — Reasoner + Goals + Regression + ContextComposer | ⬜ |
-| v0.6 | Output Layer — PromptAdapter + Emotion Momentum + Lifecycle | ⬜ |
-| v0.7 | Performance — SnapshotManager + Incremental + Recovery | ⬜ |
-| v1.0 | Relationship OS MVP | 📋 |
-
-### 测试
-
-344 tests passed (Current Implementation). 覆盖 Infrastructure 到 Performance 的核心路径，不代表覆盖全部 Architecture 设计范围。
-
-### 架构文档
-
-10 Principles · 9 ADRs · Interaction Philosophy · Memory Retrieval Policy
-
----
-
 ## 测试
 
 ```bash
-# 运行单元测试
+# 全部测试
+python -m pytest tests/ -v
+
+# 跳过验收测试
 python -m pytest tests/ --ignore=tests/acceptance_test.py -v
 
-# 运行验收测试（压力测试 + 场景模拟 + 对抗性测试）
+# 验收测试（压力测试 + 场景模拟）
 python tests/acceptance_test.py
 ```
 
