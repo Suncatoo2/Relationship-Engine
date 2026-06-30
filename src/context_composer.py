@@ -224,7 +224,8 @@ class ContextComposer:
 
     def compose(self, person: str, person_events: list,
                 profiles: dict[str, dict],
-                pre_ranked_facts: list | None = None) -> ContextObject:
+                pre_ranked_facts: list | None = None,
+                insights: list | None = None) -> ContextObject:
         """组装 ContextObject，填充所有 Block
 
         Args:
@@ -234,6 +235,8 @@ class ContextComposer:
             pre_ranked_facts: 可选，RetrievalRanker 排名后的 ScoredFact 列表。
                               如果提供，MemoryBlock 使用这些 facts（不重新排名）。
                               如果为 None，从 profiles 中提取所有 facts。
+            insights: 可选，CrossProjectionReasoner 产出的 Insight 列表。
+                      如果提供，写入 ContextObject 并传递给 MemoryReasoner。
         """
         # 1. 先组装基础 blocks
         memory = self._memory(profiles, person, pre_ranked_facts)
@@ -241,7 +244,7 @@ class ContextComposer:
         time = self._time(profiles, person)
         emotion = self._emotion(profiles, person)
 
-        # 2. 用 Reasoner 生成 summary，写入 MemoryBlock
+        # 2. 用 Reasoner 生成 summary，写入 MemoryBlock（传入 insights）
         temp_ctx = ContextObject(
             identity=self._identity(person),
             memory=memory,
@@ -251,7 +254,7 @@ class ContextComposer:
             growth=self._growth(profiles, person),
             system=self._system(person_events),
         )
-        reasoner_output = self._reasoner.reason(temp_ctx)
+        reasoner_output = self._reasoner.reason(temp_ctx, insights=insights)
 
         # 3. 把 summary 写入 MemoryBlock（frozen，需要重建）
         memory_with_summary = MemoryBlock(
@@ -260,6 +263,15 @@ class ContextComposer:
             memory_summary=reasoner_output.summary,
             top_topics=memory.top_topics,
         )
+
+        # 4. 序列化 insights 为 dict list（供 ContextObject 存储）
+        insight_dicts: list[dict] = []
+        if insights:
+            for i in insights:
+                if hasattr(i, "to_dict"):
+                    insight_dicts.append(i.to_dict())
+                elif isinstance(i, dict):
+                    insight_dicts.append(i)
 
         return ContextObject(
             identity=self._identity(person),
@@ -270,6 +282,7 @@ class ContextComposer:
             growth=self._growth(profiles, person),
             goals=self._goals(profiles, person),
             suggestions=self._suggestions(profiles, person) if self.enable_suggestions else [],
+            insights=insight_dicts,
             system=self._system(person_events),
             last_consumed_event_id=person_events[-1].event_id if person_events else "",
         )

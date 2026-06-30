@@ -182,6 +182,7 @@ class ContextObject:
     4 must blocks: identity / memory / relationship / time / system
     3 optional:    emotion / growth / goals
     版本校验:      last_consumed_event_id（读写一致性安全网）
+    v0.8+:         insights — Cross-Projection Reasoning（Engine Detects）
 
     ⚠️ 冻结警告：这是最后一次结构性变更。
     以后只允许增加字段，不修改整体结构。
@@ -195,6 +196,7 @@ class ContextObject:
     growth: dict | None = None          # reserved, v0.5
     goals: GoalsBlock | None = None     # Goal Engine 输出
     suggestions: list[str] = field(default_factory=list)  # Engine Detect (ADR-007)
+    insights: list[dict] = field(default_factory=list)    # Cross-Projection Reasoning (v0.8+)
     last_consumed_event_id: str = ""    # 版本校验：当前已消费的最新 event_id
 
     def to_dict(self) -> dict:
@@ -214,6 +216,8 @@ class ContextObject:
             d["goals"] = self.goals.to_dict()
         if self.suggestions:
             d["suggestions"] = self.suggestions
+        if self.insights:
+            d["insights"] = self.insights
         return d
 
     def to_json(self) -> str:

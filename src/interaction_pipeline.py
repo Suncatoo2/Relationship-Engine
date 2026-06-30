@@ -24,6 +24,7 @@ from .context_composer import ContextComposer
 from .snapshot_manager import SnapshotManager
 from .pipeline_response import PipelineResponse, RecallMetadata, Diagnostics
 from .retrieval_ranker import RetrievalRanker
+from .cross_projection_reasoner import CrossProjectionReasoner
 
 
 # ============================================================
@@ -198,6 +199,7 @@ class InteractionPipeline:
             enable_lifecycle=enable_lifecycle,
         )
         self._ranker = RetrievalRanker()
+        self._cross_reasoner = CrossProjectionReasoner()
         self._snapshot_mgr = SnapshotManager(data_dir)
 
         # Capability token: 注入 Storage，保证只有 Pipeline 能写入
@@ -261,7 +263,12 @@ class InteractionPipeline:
         profiles = self.dispatcher.project_all(all_events, person=person)
         proj_timing["project_all_total"] = (time.perf_counter() - t0) * 1000
 
-        # 3. 排名（query-aware retrieval）
+        # 3. 跨投影推理（Step 3: Cross-Projection Reasoning）
+        t0 = time.perf_counter()
+        insights = self._cross_reasoner.reason(profiles, person)
+        proj_timing["cross_projection_reasoning"] = (time.perf_counter() - t0) * 1000
+
+        # 4. 排名（query-aware retrieval）
         t0 = time.perf_counter()
         pre_ranked = self._composer.extract_facts(profiles, person)
         ranked = self._ranker.rank(
@@ -270,13 +277,14 @@ class InteractionPipeline:
         ranker_stats = self._ranker.stats
         proj_timing["ranking"] = (time.perf_counter() - t0) * 1000
 
-        # 4. 组装上下文（传入排名后的 facts）
+        # 5. 组装上下文（传入排名后的 facts + insights）
         t0 = time.perf_counter()
         ctx = self._composer.compose(person, person_events, profiles,
-                                     pre_ranked_facts=ranked)
+                                     pre_ranked_facts=ranked,
+                                     insights=insights)
         proj_timing["compose"] = (time.perf_counter() - t0) * 1000
 
-        # 5. 构建 metadata
+        # 6. 构建 metadata
         persons_in_events = set(e.person for e in all_events if e.person)
         metadata = RecallMetadata(
             version=1,

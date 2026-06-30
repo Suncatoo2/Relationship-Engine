@@ -32,11 +32,13 @@ class ReasonerOutput:
 class MemoryReasoner:
     """记忆推理器 — 从 ContextObject 生成人话摘要"""
 
-    def reason(self, ctx) -> ReasonerOutput:
+    def reason(self, ctx, insights: list | None = None) -> ReasonerOutput:
         """从 ContextObject 生成摘要和洞察
 
         Args:
             ctx: ContextObject
+            insights: 可选，Cross-Projection Reasoner 产出的 Insight 列表。
+                      如果提供，top 1-2 insights 会注入到 summary 中。
 
         Returns:
             ReasonerOutput
@@ -85,6 +87,14 @@ class MemoryReasoner:
         if ctx.relationship and ctx.relationship.milestones:
             for m in ctx.relationship.milestones[:2]:
                 highlights.append(f"里程碑：{m}")
+
+        # 6. 跨投影洞察（Step 3: Cross-Projection Reasoning）
+        if insights:
+            for insight in insights[:2]:  # top 2 insights only
+                severity_icon = {"critical": "🔴", "warning": "⚠️", "info": "ℹ️"}.get(
+                    getattr(insight, "severity", "info") if hasattr(insight, "severity") else "info", "ℹ️"
+                )
+                highlights.append(f"{severity_icon} {insight.summary if hasattr(insight, 'summary') else str(insight)}")
 
         summary = f"关于{name}：" + "；".join(parts) if parts else ""
 
