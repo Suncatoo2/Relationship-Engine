@@ -14,15 +14,11 @@ import json
 from datetime import datetime, timezone, timedelta
 from mcp.server.fastmcp import FastMCP
 from .event_types import EventType
-from .storage import JSONLStorage
-from .dispatcher import ProjectionDispatcher
-from .interaction_pipeline import InteractionPipeline, Interaction, FactInput, EmotionInput, RelationInput
-from .projections.fact_state import FactProjection
-from .projections.person import PersonProjection
-from .projections.relationship import RelationshipProjection
-from .projections.time_context import TimeContextProjection
-from .projections.emotion import EmotionProjection
-from .projections.growth import GrowthProjection
+from .interaction_pipeline import (
+    InteractionPipeline, Interaction,
+    FactInput, EmotionInput, RelationInput, MilestoneInput, GrowthInput,
+    create_pipeline,
+)
 
 
 # ---- 全局实例（Pipeline 唯一入口）----
@@ -30,18 +26,9 @@ from .projections.growth import GrowthProjection
 # 路径约定: data/{user_id}/events.jsonl
 # user_id 由调用方决定，Engine 不关心如何认证（Principle #9）
 _user_id = os.getenv("USER_ID", "local_default")
-_data_dir = os.path.join(os.getenv("DATA_DIR", "data"), _user_id)
-_storage = JSONLStorage(_data_dir)
+_data_dir = os.getenv("DATA_DIR", "data")
 
-_dispatcher = ProjectionDispatcher()
-_dispatcher.register(FactProjection(),          event_types=["fact"])
-_dispatcher.register(PersonProjection(),        event_types=["person", "fact"])
-_dispatcher.register(RelationshipProjection(),  event_types=["relation", "chat", "milestone", "person"])
-_dispatcher.register(TimeContextProjection(),   event_types=["chat", "person", "milestone"])
-_dispatcher.register(EmotionProjection(),       event_types=["emotion"])
-_dispatcher.register(GrowthProjection(),        event_types=["growth"])
-
-_pipeline = InteractionPipeline(storage=_storage, dispatcher=_dispatcher)
+_pipeline = create_pipeline(data_dir=_data_dir, user_id=_user_id)
 
 mcp = FastMCP("RelationshipEventOS")
 
@@ -185,14 +172,15 @@ async def add_milestone(
         description: 描述
         significance: 重要性 1-10
     """
-    from .event_types import create_event
-    event = create_event(
-        type=EventType.MILESTONE,
+    _pipeline.publish(Interaction(
+        message=f"[里程碑] {description}",
         person=person_name,
-        data={"milestone_type": milestone_type, "description": description, "significance": significance},
-    )
-    stored = _storage.append(event)
-    _dispatcher.dispatch(stored)
+        milestone=MilestoneInput(
+            milestone_type=milestone_type,
+            description=description,
+            significance=significance,
+        ),
+    ))
     return f"已记录里程碑: {description}"
 
 
@@ -215,15 +203,17 @@ async def add_growth(
         impact_level: 影响程度 1-10
         date: 日期（YYYY-MM 或 YYYY-MM-DD）
     """
-    from .event_types import create_event
-    event = create_event(
-        type=EventType.GROWTH,
+    _pipeline.publish(Interaction(
+        message=f"[成长] {title}",
         person=person_name,
-        data={"title": title, "category": category, "description": description,
-              "impact_level": impact_level, "date": date},
-    )
-    stored = _storage.append(event)
-    _dispatcher.dispatch(stored)
+        growth=GrowthInput(
+            title=title,
+            category=category,
+            description=description,
+            impact_level=impact_level,
+            date=date,
+        ),
+    ))
     return f"已记录成长: {title}"
 
 
@@ -276,7 +266,7 @@ async def get_events(
         days: 最近多少天
         event_type: 事件类型过滤（可选）
     """
-    events = list(_storage.read_all())
+    events = list(_pipeline.storage.read_all())
     if person_name:
         events = [e for e in events if e.person == person_name]
     if event_type:
@@ -321,7 +311,7 @@ async def search(keyword: str) -> str:
     """
     keyword_lower = keyword.lower()
     results = []
-    for e in _storage.read_all():
+    for e in _pipeline.storage.read_all():
         if keyword_lower in json.dumps(e.data, ensure_ascii=False).lower():
             results.append(e)
         elif keyword_lower in e.person.lower():
@@ -337,7 +327,7 @@ async def search(keyword: str) -> str:
 def list_people() -> str:
     """获取所有人物列表"""
     persons: dict[str, dict] = {}
-    for e in _storage.read_all():
+    for e in _pipeline.storage.read_all():
         if e.person and e.person not in persons:
             persons[e.person] = {"name": e.person, "first_seen": e.occurred_at}
     return json.dumps(persons, ensure_ascii=False, indent=2)
@@ -346,7 +336,7 @@ def list_people() -> str:
 @mcp.resource("relationship://stats")
 def get_stats() -> str:
     """获取系统统计摘要"""
-    events = list(_storage.read_all())
+    events = list(_pipeline.storage.read_all())
     type_counts: dict[str, int] = {}
     persons: set[str] = set()
     for e in events:

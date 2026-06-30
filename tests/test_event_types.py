@@ -80,7 +80,7 @@ class TestEvent:
 
 class TestEventTypes:
     def test_all_event_types_exist(self):
-        expected = {"person", "chat", "fact", "emotion", "relation", "milestone", "growth", "reminder"}
+        expected = {"person", "chat", "fact", "emotion", "relation", "milestone", "growth", "reminder", "profile"}
         actual = {t.value for t in EventType}
         assert actual == expected
 

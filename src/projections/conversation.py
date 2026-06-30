@@ -100,6 +100,21 @@ class ConversationProfile:
 class ConversationProjection(Projection):
     """对话分析投影"""
 
+    def __init__(self):
+        self._cache: list = []
+
+    def apply(self, event: Event):
+        """增量模式：缓存单个 chat event"""
+        if event.type == EventType.CHAT and event.person:
+            self._cache.append(event)
+
+    def snapshot(self) -> dict:
+        """返回当前缓存状态的序列化快照"""
+        return {
+            name: p.to_dict()
+            for name, p in self.project(self._cache).items()
+        }
+
     def project(self, events) -> dict[str, ConversationProfile]:
         profiles: dict[str, ConversationProfile] = {}
         event_list = list(events)

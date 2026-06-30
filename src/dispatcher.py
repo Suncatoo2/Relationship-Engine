@@ -14,6 +14,7 @@ registry = {
 Pipeline 不知道 Dispatcher 里有几个 Projection。
 """
 
+import time
 from collections import defaultdict
 from src.projections.base import Projection
 from src.event_types import Event
@@ -31,6 +32,8 @@ class ProjectionDispatcher:
         self._registry: dict[str, list[Projection]] = defaultdict(list)
         self._all_projections: list[Projection] = list(projections) if projections else []
         self._dead_letter: list[dict] = []  # 死信记录：单个 Projection 失败的审计日志
+        self._dispatch_count: dict[str, int] = defaultdict(int)  # 每个 Projection 的 dispatch 次数
+        self._dispatch_timing: dict[str, list[float]] = defaultdict(list)  # 每次 dispatch 的耗时(ms)
 
     def register(self, projection: Projection, event_types: list[str]):
         """注册一个 Projection 监听指定 event_type
@@ -50,18 +53,26 @@ class ProjectionDispatcher:
         某个 Projection 的 apply() 失败不影响其他 Projection。
         失败记录写入死信队列（_dead_letter），严禁雪崩。
 
+        记录 dispatch_count 和 timing 用于可观测性。
+
         Args:
             event: 由 Pipeline 传入的单个 Event
         """
         for proj in self._registry.get(event.type, []):
+            t0 = time.perf_counter()
             try:
                 proj.apply(event)
+                elapsed = (time.perf_counter() - t0) * 1000
+                self._dispatch_count[proj.__class__.__name__] += 1
+                self._dispatch_timing[proj.__class__.__name__].append(elapsed)
             except Exception as e:
+                elapsed = (time.perf_counter() - t0) * 1000
                 self._dead_letter.append({
                     "event_type": event.type if isinstance(event.type, str) else event.type.value,
                     "event_id": event.event_id,
                     "projection": proj.__class__.__name__,
                     "error": str(e),
+                    "timing_ms": round(elapsed, 3),
                 })
 
     def snapshot_all(self) -> dict[str, dict]:
@@ -108,6 +119,37 @@ class ProjectionDispatcher:
     def dead_letters(self) -> list[dict]:
         """死信队列：apply() 失败的记录"""
         return self._dead_letter
+
+    @property
+    def dispatch_stats(self) -> dict:
+        """返回 dispatch 可观测性统计
+
+        Returns:
+            {
+                "total_dispatches": int,
+                "by_projection": {name: count, ...},
+                "timing": {name: {"avg_ms": x, "max_ms": y, "p95_ms": z}, ...},
+                "dead_letter_count": int,
+            }
+        """
+        timing_summary = {}
+        for name, timings in self._dispatch_timing.items():
+            if not timings:
+                continue
+            sorted_t = sorted(timings)
+            p95_idx = int(len(sorted_t) * 0.95)
+            timing_summary[name] = {
+                "avg_ms": round(sum(timings) / len(timings), 3),
+                "max_ms": round(max(timings), 3),
+                "p95_ms": round(sorted_t[min(p95_idx, len(sorted_t) - 1)], 3),
+                "count": len(timings),
+            }
+        return {
+            "total_dispatches": sum(self._dispatch_count.values()),
+            "by_projection": dict(self._dispatch_count),
+            "timing": timing_summary,
+            "dead_letter_count": len(self._dead_letter),
+        }
 
     def info(self) -> list[dict]:
         """返回所有已注册 Projection 的元信息"""

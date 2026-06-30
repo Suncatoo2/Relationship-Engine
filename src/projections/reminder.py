@@ -130,6 +130,22 @@ class ReminderProfile:
 class ReminderProjection(Projection):
     """智能提醒投影"""
 
+    def __init__(self):
+        self._cache: list = []
+
+    def apply(self, event: Event):
+        """增量模式：缓存 person/milestone/emotion/reminder/growth/chat events"""
+        if event.person and event.type in (
+            EventType.PERSON, EventType.MILESTONE, EventType.EMOTION,
+            EventType.REMINDER, EventType.GROWTH, EventType.CHAT,
+        ):
+            self._cache.append(event)
+
+    def snapshot(self) -> dict:
+        """返回当前缓存状态的序列化快照"""
+        profile = self.project(self._cache)
+        return profile.to_dict()
+
     def project(self, events) -> ReminderProfile:
         event_list = list(events)
         now = datetime.now(timezone.utc)

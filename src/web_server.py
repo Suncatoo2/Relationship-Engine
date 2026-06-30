@@ -21,17 +21,7 @@ from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, JSO
 from pydantic import BaseModel
 
 from .event_types import EventType
-from .storage import JSONLStorage
-from .dispatcher import ProjectionDispatcher
-from .interaction_pipeline import InteractionPipeline, Interaction, FactInput, EmotionInput
-from .projections.fact_state import FactProjection
-from .projections.person import PersonProjection
-from .projections.relationship import RelationshipProjection
-from .projections.time_context import TimeContextProjection
-from .projections.emotion import EmotionProjection
-from .projections.growth import GrowthProjection
-from .projections.conversation import ConversationProjection
-from .projections.reminder import ReminderProjection
+from .interaction_pipeline import InteractionPipeline, Interaction, FactInput, EmotionInput, create_pipeline
 from .memory_engine import MemoryEngine
 from .prompt_adapter import get_adapter
 from .provider import create_provider
@@ -56,26 +46,16 @@ def _maybe_save_snapshot():
 # 路径约定: data/{user_id}/events.jsonl
 # user_id 由 API 层决定，Engine 不关心如何认证（Principle #9）
 _user_id = os.getenv("USER_ID", "local_default")
-_data_dir = os.path.join(os.getenv("DATA_DIR", "data"), _user_id)
-_storage = JSONLStorage(_data_dir)
+_data_dir = os.getenv("DATA_DIR", "data")
 
 # Pipeline — 唯一写入口，唯一读出口
-# 注册 5 个 Projection（Pipeline 不知道有几个）
-_dispatcher = ProjectionDispatcher()
-_dispatcher.register(FactProjection(),          event_types=["fact"])
-_dispatcher.register(PersonProjection(),        event_types=["person", "fact"])
-_dispatcher.register(RelationshipProjection(),  event_types=["relation", "chat", "milestone", "person"])
-_dispatcher.register(TimeContextProjection(),   event_types=["chat", "person", "milestone"])
-_dispatcher.register(EmotionProjection(),       event_types=["emotion"])
-_dispatcher.register(GrowthProjection(),        event_types=["growth"])
-_dispatcher.register(ConversationProjection(),  event_types=["chat"])
-_dispatcher.register(ReminderProjection(),      event_types=["person", "milestone", "emotion", "reminder"])
-
-_pipeline = InteractionPipeline(storage=_storage, dispatcher=_dispatcher)
+# 通过 create_pipeline() 工厂统一配置（含全部 8 个 Projection）
+_pipeline = create_pipeline(data_dir=_data_dir, user_id=_user_id)
 
 _memory_engine = MemoryEngine(pipeline=_pipeline)
 _llm_provider = create_provider()
-_prompt_log_file = os.path.join(_data_dir, "prompts.jsonl")
+# prompt log 放在与 events.jsonl 同目录（data/{user_id}/）
+_prompt_log_file = os.path.join(os.path.dirname(_pipeline.storage._file_path), "prompts.jsonl")
 
 print(f"Provider: {_llm_provider.name() if _llm_provider else '离线模式'}")
 
@@ -199,7 +179,7 @@ async def chat_stream(req: ChatRequest):
 @app.get("/api/conversations")
 async def list_conversations():
     """获取所有会话列表"""
-    events = list(_storage.read_all())
+    events = list(_pipeline.storage.read_all())
     conv_map: dict[str, dict] = {}
 
     for e in events:
@@ -238,7 +218,7 @@ async def get_messages(conversation_id: str, limit: int = 100):
 
 @app.get("/api/events")
 async def get_events(person: str = "", limit: int = 100):
-    events = list(_storage.read_all())
+    events = list(_pipeline.storage.read_all())
     if person:
         events = [e for e in events if e.person == person]
     return [e.to_dict() for e in events[-limit:]]
@@ -248,7 +228,7 @@ async def get_events(person: str = "", limit: int = 100):
 
 @app.get("/api/stats")
 async def stats():
-    events = list(_storage.read_all())
+    events = list(_pipeline.storage.read_all())
     persons = set()
     for e in events:
         if e.person:
@@ -308,7 +288,7 @@ async def debug_explain(person: str, query: str = ""):
 
 def get_conversation_history(conversation_id: str, limit: int = 20) -> list[dict]:
     """获取会话历史消息"""
-    events = list(_storage.read_all())
+    events = list(_pipeline.storage.read_all())
     messages = []
     for e in events:
         if e.type == EventType.CHAT and e.data.get("conversation_id") == conversation_id:

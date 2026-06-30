@@ -20,7 +20,7 @@ from datetime import datetime, timezone, timedelta
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.event_types import create_event, EventType, Event
-from src.storage import JSONLStorage
+from src.storage import JSONLStorage, StorageCapability
 from src.projections.person import PersonProjection
 from src.projections.relationship import RelationshipProjection
 from src.projections.time_context import TimeContextProjection
@@ -72,7 +72,10 @@ class TestResult:
 def make_log():
     import tempfile
     tmp = tempfile.mkdtemp()
-    return JSONLStorage(tmp)
+    return JSONLStorage(tmp, capability_token="pipeline:test_token")
+
+# Single shared capability for acceptance test
+_accept_cap = StorageCapability(_token="pipeline:test_token")
 
 
 # ============================================================
@@ -113,7 +116,7 @@ def test_stress_large_scale(result: TestResult):
         else:
             data = {"title": f"growth_{i}", "category": "skill", "impact_level": random.randint(1, 10), "date": f"2026-{random.randint(1,6):02d}"}
 
-        log.append(create_event(type=event_type, person=p, data=data, occurred_at=ts))
+        log.append(event=create_event(type=event_type, person=p, data=data, occurred_at=ts), capability=_accept_cap)
 
     gen_time = time.time() - start
     print(f"  生成耗时: {gen_time:.1f}s")
@@ -178,28 +181,28 @@ def test_realistic_scenario(result: TestResult):
     print("  模拟：大学同学（每天聊天，180天）")
     for day in range(180):
         ts = (now - timedelta(days=180 - day)).isoformat()
-        log.append(create_event(type=EventType.PERSON, data={"action": "create", "tags": ["同学"]}, person="小明", occurred_at=ts))
+        log.append(create_event(type=EventType.PERSON, data={"action": "create", "tags": ["同学"]}, person="小明", occurred_at=ts), capability=_accept_cap)
         for msg in range(random.randint(5, 10)):
             ts_msg = (now - timedelta(days=180 - day, hours=random.randint(0, 23))).isoformat()
             topics = random.sample(["学习", "游戏", "吃饭", "考试", "Python"], k=2)
-            log.append(create_event(type=EventType.CHAT, data={"role": "user", "content": f"msg_{msg}", "topics": topics}, person="小明", occurred_at=ts_msg))
+            log.append(create_event(type=EventType.CHAT, data={"role": "user", "content": f"msg_{msg}", "topics": topics}, person="小明", occurred_at=ts_msg), capability=_accept_cap)
 
     # 场景：很久没联系的朋友
     print("  模拟：很久没联系的朋友（90天前聊过2次）")
-    log.append(create_event(type=EventType.PERSON, data={"action": "create", "tags": ["朋友"]}, person="老王", occurred_at=(now - timedelta(days=365)).isoformat()))
-    log.append(create_event(type=EventType.CHAT, data={"role": "user", "content": "好久不见", "topics": ["问候"]}, person="老王", occurred_at=(now - timedelta(days=90)).isoformat()))
-    log.append(create_event(type=EventType.CHAT, data={"role": "assistant", "content": "是啊好久不见"}, person="老王", occurred_at=(now - timedelta(days=90, hours=-1)).isoformat()))
+    log.append(create_event(type=EventType.PERSON, data={"action": "create", "tags": ["朋友"]}, person="老王", occurred_at=(now - timedelta(days=365)).isoformat()), capability=_accept_cap)
+    log.append(create_event(type=EventType.CHAT, data={"role": "user", "content": "好久不见", "topics": ["问候"]}, person="老王", occurred_at=(now - timedelta(days=90)).isoformat()), capability=_accept_cap)
+    log.append(create_event(type=EventType.CHAT, data={"role": "assistant", "content": "是啊好久不见"}, person="老王", occurred_at=(now - timedelta(days=90, hours=-1)).isoformat()), capability=_accept_cap)
 
     # 场景：暧昧对象（最近关系升温）
     print("  模拟：暧昧对象（关系升温）")
-    log.append(create_event(type=EventType.PERSON, data={"action": "create", "birthday": "1999-03-15", "tags": ["暧昧"]}, person="小雨", occurred_at=(now - timedelta(days=60)).isoformat()))
-    log.append(create_event(type=EventType.RELATION, data={"stage": "认识", "delta": 10}, person="小雨", occurred_at=(now - timedelta(days=60)).isoformat()))
-    log.append(create_event(type=EventType.RELATION, data={"stage": "暧昧", "delta": 30, "event": "第一次约会"}, person="小雨", occurred_at=(now - timedelta(days=30)).isoformat()))
-    log.append(create_event(type=EventType.MILESTONE, data={"milestone_type": "first_date", "description": "一起看电影", "significance": 9}, person="小雨", occurred_at=(now - timedelta(days=30)).isoformat()))
+    log.append(create_event(type=EventType.PERSON, data={"action": "create", "birthday": "1999-03-15", "tags": ["暧昧"]}, person="小雨", occurred_at=(now - timedelta(days=60)).isoformat()), capability=_accept_cap)
+    log.append(create_event(type=EventType.RELATION, data={"stage": "认识", "delta": 10}, person="小雨", occurred_at=(now - timedelta(days=60)).isoformat()), capability=_accept_cap)
+    log.append(create_event(type=EventType.RELATION, data={"stage": "暧昧", "delta": 30, "event": "第一次约会"}, person="小雨", occurred_at=(now - timedelta(days=30)).isoformat()), capability=_accept_cap)
+    log.append(create_event(type=EventType.MILESTONE, data={"milestone_type": "first_date", "description": "一起看电影", "significance": 9}, person="小雨", occurred_at=(now - timedelta(days=30)).isoformat()), capability=_accept_cap)
     for day in range(30):
         ts = (now - timedelta(days=30 - day)).isoformat()
-        log.append(create_event(type=EventType.CHAT, data={"role": "user", "content": f"聊天{day}", "topics": ["日常", "心情"]}, person="小雨", occurred_at=ts))
-    log.append(create_event(type=EventType.EMOTION, data={"valence": 0.8, "label": "开心", "context": "约会"}, person="小雨", occurred_at=(now - timedelta(days=5)).isoformat()))
+        log.append(create_event(type=EventType.CHAT, data={"role": "user", "content": f"聊天{day}", "topics": ["日常", "心情"]}, person="小雨", occurred_at=ts), capability=_accept_cap)
+    log.append(create_event(type=EventType.EMOTION, data={"valence": 0.8, "label": "开心", "context": "约会"}, person="小雨", occurred_at=(now - timedelta(days=5)).isoformat()), capability=_accept_cap)
 
     events = list(log.read_all())
 
@@ -250,9 +253,9 @@ def test_adversarial(result: TestResult):
 
     # Bug 1: 情绪快速翻转
     print("  测试：情绪快速翻转")
-    log.append(create_event(type=EventType.EMOTION, data={"valence": 0.9, "label": "开心"}, person="翻转人", occurred_at=(now - timedelta(hours=3)).isoformat()))
-    log.append(create_event(type=EventType.EMOTION, data={"valence": -0.9, "label": "特别难过"}, person="翻转人", occurred_at=(now - timedelta(hours=2)).isoformat()))
-    log.append(create_event(type=EventType.EMOTION, data={"valence": 0.0, "label": "平静", "context": "刚才骗你的"}, person="翻转人", occurred_at=(now - timedelta(hours=1)).isoformat()))
+    log.append(create_event(type=EventType.EMOTION, data={"valence": 0.9, "label": "开心"}, person="翻转人", occurred_at=(now - timedelta(hours=3)).isoformat()), capability=_accept_cap)
+    log.append(create_event(type=EventType.EMOTION, data={"valence": -0.9, "label": "特别难过"}, person="翻转人", occurred_at=(now - timedelta(hours=2)).isoformat()), capability=_accept_cap)
+    log.append(create_event(type=EventType.EMOTION, data={"valence": 0.0, "label": "平静", "context": "刚才骗你的"}, person="翻转人", occurred_at=(now - timedelta(hours=1)).isoformat()), capability=_accept_cap)
     events = list(log.read_all())
     emo = EmotionProjection().project_one(events, "翻转人")
     if emo and emo.current:
@@ -404,7 +407,8 @@ def test_edge_cases(result: TestResult):
         from src.interaction_pipeline import InteractionPipeline
         disp = ProjectionDispatcher()
         pipeline = InteractionPipeline(storage=log, dispatcher=disp)
-        ctx = pipeline.recall("不存在")
+        response = pipeline.recall("不存在")
+        ctx = response.context
         assert ctx.identity.name == "不存在"
         assert ctx.memory.fact_count == 0
         assert ctx.system.event_count == 0
@@ -436,11 +440,11 @@ def test_api_consistency(result: TestResult):
 
     log = make_log()
     now = datetime.now(timezone.utc)
-    log.append(create_event(type=EventType.PERSON, data={"action": "create", "birthday": "1998-06-15", "tags": ["同学"]}, person="一致性测试"))
-    log.append(create_event(type=EventType.CHAT, data={"role": "user", "content": "hello", "topics": ["问候"]}, person="一致性测试"))
-    log.append(create_event(type=EventType.RELATION, data={"stage": "朋友", "delta": 20}, person="一致性测试"))
-    log.append(create_event(type=EventType.EMOTION, data={"valence": 0.5, "label": "开心"}, person="一致性测试"))
-    log.append(create_event(type=EventType.GROWTH, data={"title": "学会Python", "category": "skill", "impact_level": 7, "date": "2026-01"}, person="一致性测试"))
+    log.append(create_event(type=EventType.PERSON, data={"action": "create", "birthday": "1998-06-15", "tags": ["同学"]}, person="一致性测试"), capability=_accept_cap)
+    log.append(create_event(type=EventType.CHAT, data={"role": "user", "content": "hello", "topics": ["问候"]}, person="一致性测试"), capability=_accept_cap)
+    log.append(create_event(type=EventType.RELATION, data={"stage": "朋友", "delta": 20}, person="一致性测试"), capability=_accept_cap)
+    log.append(create_event(type=EventType.EMOTION, data={"valence": 0.5, "label": "开心"}, person="一致性测试"), capability=_accept_cap)
+    log.append(create_event(type=EventType.GROWTH, data={"title": "学会Python", "category": "skill", "impact_level": 7, "date": "2026-01"}, person="一致性测试"), capability=_accept_cap)
     events = list(log.read_all())
 
     # 检查所有 Projection 都返回 dict

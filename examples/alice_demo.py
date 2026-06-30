@@ -122,7 +122,8 @@ def show_context(pipeline: InteractionPipeline):
     print("  Step 3: ContextObject (Reasoner → Composer → JSON)")
     print("=" * 60)
 
-    ctx = pipeline.recall("Alice")
+    response = pipeline.recall("Alice")
+    ctx = response.context
     d = ctx.to_dict()
 
     # 分块打印
