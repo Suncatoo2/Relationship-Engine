@@ -55,7 +55,7 @@ _pipeline = create_pipeline(data_dir=_data_dir, user_id=_user_id)
 _consumer = ConsumerFacade(pipeline=_pipeline)
 _llm_provider = create_provider()
 # prompt log 放在与 events.jsonl 同目录（data/{user_id}/）
-_prompt_log_file = os.path.join(os.path.dirname(_pipeline.storage._file_path), "prompts.jsonl")
+_prompt_log_file = os.path.join(_data_dir, _user_id, "prompts.jsonl")
 
 print(f"Provider: {_llm_provider.name() if _llm_provider else '离线模式'}")
 
@@ -268,8 +268,9 @@ async def debug_prompts(limit: int = 10):
 @app.get("/api/debug/explain")
 async def debug_explain(person: str, query: str = ""):
     """解释 AI 为什么这样回答——展示使用了哪些记忆"""
-    # 使用 Pipeline.recall() 新架构替代旧 MemorySelector
-    ctx = _pipeline.recall(person).context
+    # 通过 ConsumerFacade → Pipeline.recall() 统一读取
+    result = _consumer.recall(person, query=query)
+    ctx = result.context
     facts_used = []
     if ctx.memory and ctx.memory.active_facts:
         for f in ctx.memory.active_facts:

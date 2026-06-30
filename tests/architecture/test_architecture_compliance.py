@@ -300,3 +300,63 @@ class TestNoPipelineBypass:
                 f"ARCHITECTURE VIOLATION: {fname} 未使用 create_pipeline() 工厂。\n"
                 f"所有 Server 必须通过 create_pipeline() 统一初始化 Pipeline。"
             )
+
+
+# ============================================================
+#  Consumer Facade Enforcement — Post Consumer Unification
+# ============================================================
+
+class TestConsumerFacadeEnforcement:
+    """Phase 1: enforce ConsumerFacade as the single consumer entry point.
+
+    After Consumer Unification, all consumer files (mcp_server, web_server,
+    future cli/api) MUST use ConsumerFacade for reads. Direct Pipeline.recall()
+    or Storage access in consumer files is a regression.
+    """
+
+    CONSUMER_FILES = ["web_server.py", "mcp_server.py"]
+
+    def test_consumer_files_import_consumer_facade(self):
+        """All consumer files must import ConsumerFacade."""
+        for fname in self.CONSUMER_FILES:
+            path = SRC_DIR / fname
+            content = path.read_text(encoding="utf-8")
+            assert "ConsumerFacade" in content, (
+                f"CONSUMER FACADE VIOLATION: {fname} does not import ConsumerFacade.\n"
+                f"All consumers must use ConsumerFacade as the single entry point."
+            )
+
+    def test_consumer_files_do_not_import_storage(self):
+        """Consumer files must not import Storage directly."""
+        for fname in self.CONSUMER_FILES:
+            path = SRC_DIR / fname
+            tree = _parse_file(path)
+            import_names = _find_import_names(tree)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    if node.module and "storage" in node.module:
+                        aliases = [a.name for a in node.names]
+                        assert False, (
+                            f"CONSUMER FACADE VIOLATION: {fname} imports from storage module: {aliases}.\n"
+                            f"All data access must go through ConsumerFacade, not Storage directly."
+                        )
+
+    def test_no_consumer_bypasses_pipeline_recall(self):
+        """Consumer files must not call Pipeline.recall() directly.
+
+        All recall() calls must go through ConsumerFacade.recall().
+        """
+        for fname in self.CONSUMER_FILES:
+            path = SRC_DIR / fname
+            tree = _parse_file(path)
+            method_calls = _walk_ast_method_calls(tree)
+            violations = [
+                (obj, method, line)
+                for method, obj, line in method_calls
+                if method == "recall" and "_pipeline" in obj
+            ]
+            assert len(violations) == 0, (
+                f"CONSUMER FACADE VIOLATION: {fname} calls Pipeline.recall() directly "
+                f"at lines: {violations}.\n"
+                f"All recall() calls must go through ConsumerFacade.recall()."
+            )
