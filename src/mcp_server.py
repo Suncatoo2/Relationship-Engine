@@ -5,8 +5,8 @@
 
 Everything is Event. Everything else is Projection.
 
-Write: publish_interaction() → Pipeline
-Read:  get_context() → Pipeline.recall() → ContextObject JSON
+Write: ConsumerFacade.publish() → Pipeline
+Read:  ConsumerFacade.recall() → Pipeline.recall() → ContextObject JSON
 """
 
 import os
@@ -19,6 +19,7 @@ from .interaction_pipeline import (
     FactInput, EmotionInput, RelationInput, MilestoneInput, GrowthInput,
     create_pipeline,
 )
+from .consumer_facade import ConsumerFacade
 
 
 # ---- 全局实例（Pipeline 唯一入口）----
@@ -29,6 +30,7 @@ _user_id = os.getenv("USER_ID", "local_default")
 _data_dir = os.getenv("DATA_DIR", "data")
 
 _pipeline = create_pipeline(data_dir=_data_dir, user_id=_user_id)
+_consumer = ConsumerFacade(pipeline=_pipeline)
 
 mcp = FastMCP("RelationshipEventOS")
 
@@ -237,7 +239,7 @@ async def get_context(
         max_tokens: token 预算上限
         prompt_style: 输出格式（default/gpt/claude/deepseek）
     """
-    ctx = pipeline.recall(person_name, query="", max_tokens=max_tokens).context
+    ctx = _consumer.pipeline.recall(person_name, query="", max_tokens=max_tokens).context
     return ctx.to_json()
 
 
@@ -248,7 +250,7 @@ async def get_person(name: str) -> str:
     Args:
         name: 人名
     """
-    ctx = _pipeline.recall(name).context
+    ctx = _consumer.pipeline.recall(name).context
     d = ctx.to_dict()
     return json.dumps(d.get("identity", {}), ensure_ascii=False, indent=2)
 
@@ -259,33 +261,18 @@ async def get_events(
     days: int = 30,
     event_type: str = "",
 ) -> str:
-    """获取原始事件流（兼容层，内部读取 Storage）。
+    """获取原始事件流。
 
     Args:
         person_name: 人名（可选，为空则返回所有）
         days: 最近多少天
         event_type: 事件类型过滤（可选）
     """
-    events = list(_pipeline.storage.read_all())
-    if person_name:
-        events = [e for e in events if e.person == person_name]
-    if event_type:
-        events = [e for e in events if e.type == event_type]
-    if days > 0:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        filtered = []
-        for e in events:
-            try:
-                ts = datetime.fromisoformat(e.occurred_at)
-                if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
-                if ts >= cutoff:
-                    filtered.append(e)
-            except (ValueError, TypeError):
-                filtered.append(e)
-        events = filtered
-    events = events[-100:]
-    return json.dumps([e.to_dict() for e in events], ensure_ascii=False, indent=2)
+    events = _consumer.get_raw_events(
+        person_name=person_name, days=days,
+        event_type=event_type, max_count=100,
+    )
+    return json.dumps(events, ensure_ascii=False, indent=2)
 
 
 @mcp.tool()
@@ -295,7 +282,7 @@ async def get_reminders(person_name: str = "") -> str:
     Args:
         person_name: 人名（可选）
     """
-    ctx = pipeline.recall(person_name, query="", max_tokens=max_tokens).context if person_name else None
+    ctx = _consumer.pipeline.recall(person_name).context if person_name else None
     if ctx:
         d = ctx.to_dict()
         return json.dumps(d.get("time", {}), ensure_ascii=False, indent=2)
@@ -304,19 +291,13 @@ async def get_reminders(person_name: str = "") -> str:
 
 @mcp.tool()
 async def search(keyword: str) -> str:
-    """在所有事件中搜索关键词（兼容层，内部读取 Storage）。
+    """在所有事件中搜索关键词。
 
     Args:
         keyword: 搜索关键词
     """
-    keyword_lower = keyword.lower()
-    results = []
-    for e in _pipeline.storage.read_all():
-        if keyword_lower in json.dumps(e.data, ensure_ascii=False).lower():
-            results.append(e)
-        elif keyword_lower in e.person.lower():
-            results.append(e)
-    return json.dumps([e.to_dict() for e in results[:20]], ensure_ascii=False, indent=2)
+    results = _consumer.search_events(keyword)
+    return json.dumps(results, ensure_ascii=False, indent=2)
 
 
 # ============================================================
@@ -326,25 +307,12 @@ async def search(keyword: str) -> str:
 @mcp.resource("relationship://people")
 def list_people() -> str:
     """获取所有人物列表"""
-    persons: dict[str, dict] = {}
-    for e in _pipeline.storage.read_all():
-        if e.person and e.person not in persons:
-            persons[e.person] = {"name": e.person, "first_seen": e.occurred_at}
+    persons = _consumer.list_people()
     return json.dumps(persons, ensure_ascii=False, indent=2)
 
 
 @mcp.resource("relationship://stats")
 def get_stats() -> str:
     """获取系统统计摘要"""
-    events = list(_pipeline.storage.read_all())
-    type_counts: dict[str, int] = {}
-    persons: set[str] = set()
-    for e in events:
-        type_counts[e.type] = type_counts.get(e.type, 0) + 1
-        if e.person:
-            persons.add(e.person)
-    return json.dumps({
-        "total_events": len(events),
-        "total_persons": len(persons),
-        "by_type": type_counts,
-    }, ensure_ascii=False, indent=2)
+    stats = _consumer.get_stats()
+    return json.dumps(stats, ensure_ascii=False, indent=2)

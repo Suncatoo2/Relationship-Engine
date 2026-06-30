@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from .event_types import EventType
 from .interaction_pipeline import InteractionPipeline, Interaction, FactInput, EmotionInput, create_pipeline
-from .memory_engine import MemoryEngine
+from .consumer_facade import ConsumerFacade
 from .prompt_adapter import get_adapter
 from .provider import create_provider
 
@@ -52,7 +52,7 @@ _data_dir = os.getenv("DATA_DIR", "data")
 # 通过 create_pipeline() 工厂统一配置（含全部 8 个 Projection）
 _pipeline = create_pipeline(data_dir=_data_dir, user_id=_user_id)
 
-_memory_engine = MemoryEngine(pipeline=_pipeline)
+_consumer = ConsumerFacade(pipeline=_pipeline)
 _llm_provider = create_provider()
 # prompt log 放在与 events.jsonl 同目录（data/{user_id}/）
 _prompt_log_file = os.path.join(os.path.dirname(_pipeline.storage._file_path), "prompts.jsonl")
@@ -135,9 +135,9 @@ async def chat_stream(req: ChatRequest):
     # 3. 获取历史消息
     history = get_conversation_history(req.conversation_id, limit=20)
 
-    # 4. 构建 Context（通过 Memory Engine.recall → Pipeline）
-    memory_result = _memory_engine.recall(person, query=req.message, conversation_id=req.conversation_id)
-    context = memory_result.prompt_text
+    # 4. 构建 Context（通过 ConsumerFacade → Pipeline）
+    result = _consumer.recall(person, query=req.message, conversation_id=req.conversation_id)
+    context = result.prompt_text
 
     # 5. 流式生成回复
     async def generate():
@@ -165,7 +165,7 @@ async def chat_stream(req: ChatRequest):
             context=context,
             system_prompt=f"你是 Relationship OS...\n\n{context}",
             assistant_reply=full_reply,
-            debug_info=memory_result.debug_info,
+            debug_info=result.debug_info,
             provider_debug=provider_debug,
         )
 
@@ -179,23 +179,23 @@ async def chat_stream(req: ChatRequest):
 @app.get("/api/conversations")
 async def list_conversations():
     """获取所有会话列表"""
-    events = list(_pipeline.storage.read_all())
+    events = _consumer.get_raw_events(max_count=10000)
     conv_map: dict[str, dict] = {}
 
-    for e in events:
-        if e.type == EventType.CHAT:
-            cid = e.data.get("conversation_id", "default")
+    for e_dict in events:
+        if e_dict.get("type") == EventType.CHAT:
+            cid = e_dict.get("data", {}).get("conversation_id", "default")
             if cid not in conv_map:
                 conv_map[cid] = {
                     "id": cid,
-                    "title": e.data.get("content", "")[:30],
-                    "person_name": e.person,
+                    "title": e_dict.get("data", {}).get("content", "")[:30],
+                    "person_name": e_dict.get("person", ""),
                     "last_message": "",
                     "updated_at": "",
                     "message_count": 0,
                 }
-            conv_map[cid]["last_message"] = e.data.get("content", "")[:50]
-            conv_map[cid]["updated_at"] = e.occurred_at
+            conv_map[cid]["last_message"] = e_dict.get("data", {}).get("content", "")[:50]
+            conv_map[cid]["updated_at"] = e_dict.get("occurred_at", "")
             conv_map[cid]["message_count"] += 1
 
     return sorted(conv_map.values(), key=lambda x: x["updated_at"], reverse=True)
@@ -218,7 +218,7 @@ async def get_messages(conversation_id: str, limit: int = 100):
 
 @app.get("/api/events")
 async def get_events(person: str = "", limit: int = 100):
-    events = list(_pipeline.storage.read_all())
+    events = _consumer.get_raw_events(person=person, max_count=limit)
     if person:
         events = [e for e in events if e.person == person]
     return [e.to_dict() for e in events[-limit:]]
@@ -228,11 +228,12 @@ async def get_events(person: str = "", limit: int = 100):
 
 @app.get("/api/stats")
 async def stats():
-    events = list(_pipeline.storage.read_all())
+    events = _consumer.get_raw_events(max_count=100000)
     persons = set()
-    for e in events:
-        if e.person:
-            persons.add(e.person)
+    for e_dict in events:
+        p = e_dict.get("person", "")
+        if p:
+            persons.add(p)
     return {
         "total_events": len(events),
         "total_persons": len(persons),
@@ -245,7 +246,7 @@ async def stats():
 @app.get("/api/debug/context/{person_name}")
 async def debug_context(person_name: str):
     """获取某人的 Memory Debug 信息"""
-    return {"summary": _memory_engine.get_debug_summary(person_name)}
+    return {"summary": _consumer.debug_summary(person_name)}
 
 
 @app.get("/api/debug/prompts")
@@ -288,11 +289,12 @@ async def debug_explain(person: str, query: str = ""):
 
 def get_conversation_history(conversation_id: str, limit: int = 20) -> list[dict]:
     """获取会话历史消息"""
-    events = list(_pipeline.storage.read_all())
+    events = _consumer.get_raw_events(max_count=10000)
     messages = []
-    for e in events:
-        if e.type == EventType.CHAT and e.data.get("conversation_id") == conversation_id:
-            messages.append({"role": e.data.get("role", "user"), "content": e.data.get("content", "")})
+    for e_dict in events:
+        data = e_dict.get("data", {})
+        if e_dict.get("type") == EventType.CHAT and data.get("conversation_id") == conversation_id:
+            messages.append({"role": data.get("role", "user"), "content": data.get("content", "")})
     return messages[-limit:]
 
 
