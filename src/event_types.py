@@ -21,6 +21,7 @@ class EventType(str, Enum):
     MILESTONE = "milestone"
     GROWTH = "growth"
     REMINDER = "reminder"
+    PROFILE = "profile"
 
 
 class RelationStage(str, Enum):
