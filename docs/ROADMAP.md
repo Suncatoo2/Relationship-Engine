@@ -9,6 +9,32 @@
 
 
 
+### v1.0.0-baseline — 稳定底座 ✅ (2026-06-30)
+
+Product 1.0 的第一个稳定基线版本。包含：
+
+| 能力 | 状态 |
+|------|------|
+| ProfileProjection (第 9 号 Projection) | ✅ |
+| Infrastructure hardening (PipelineResponse, WAL, capability guard) | ✅ |
+| Memory Retrieval & Ranking (query-aware recall + token budgeting) | ✅ |
+| Cross-Projection Reasoning Engine (5 条推理规则) | ✅ |
+| ConsumerFacade unification (MCP/Web 统一入口) | ✅ |
+| Architecture enforcement Phase 1 (compliance tests) | ✅ |
+| 507 tests (0.88s) | ✅ |
+
+Remaining Product 1.0 work:
+
+| Step | 名称 | 状态 |
+|------|------|------|
+| Step 4 | Closed Feedback Loop | 📋 Future |
+| Step 5 | Self Evolution | ⏳ Design Only |
+
+> v1.0.0-baseline 不是「产品完成」。
+> 它是「稳定底座完成」——可以作为 Step 4 / Step 5 的可靠起点。
+> 不包含 Closed Feedback Loop，不包含 Self Evolution。
+> 但它包含了一个完整的 Engine：Event → 9 Projections → Reasoning → Ranking → ContextObject → LLM。
+
 ---
 
 ## Engine 1.0 — Frozen ✅

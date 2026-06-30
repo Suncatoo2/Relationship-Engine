@@ -13,7 +13,7 @@
 
 ```
 Engine Version : v1.0 (Frozen)
-Product Version : v0.8 (In Progress)
+Product Version : v1.0.0-baseline (Stable)
 ```
 
 Relationship-Engine 是一个基于 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 的关系管理引擎，为大语言模型提供长期记忆、人物画像、关系追踪、事件记录、情绪摘要和智能提醒能力。
